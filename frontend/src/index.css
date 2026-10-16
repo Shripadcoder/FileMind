@@ -4,12 +4,72 @@
 
 :root {
   color-scheme: light;
+  --fm-ring: rgb(99 102 241 / 0.35);
 }
 
 .dark {
   color-scheme: dark;
+  --fm-ring: rgb(129 140 248 / 0.45);
 }
 
 body {
-  @apply bg-white text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+  font-feature-settings: "cv11", "ss01";
+}
+
+::selection {
+  background: rgb(99 102 241 / 0.25);
+}
+
+/* Consistent, visible keyboard focus everywhere. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--fm-ring);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Slim, theme-aware scrollbars for panels and code blocks. */
+:where(.fm-scroll) {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+}
+:where(.fm-scroll)::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+:where(.fm-scroll)::-webkit-scrollbar-thumb {
+  background: rgb(148 163 184 / 0.45);
+  border-radius: 8px;
+}
+
+/* Restrained entrance for dialogs and popovers. */
+@keyframes fm-pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.99);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.fm-pop {
+  animation: fm-pop-in 140ms ease-out;
+}
+
+@keyframes fm-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fm-fade {
+  animation: fm-fade-in 160ms ease-out;
+}
+
+/* Numeric columns and stat values align cleanly. */
+.fm-num {
+  font-variant-numeric: tabular-nums;
 }
