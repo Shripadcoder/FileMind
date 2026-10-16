@@ -477,13 +477,17 @@ def preview_file(
     record = get_owned_file(db, current, file_id)
     path = _blob_path_or_404(current.id, record.stored_name)
     ext = file_extension(record.original_filename)
-    mime = (record.mime_type or "").lower()
 
-    if mime.startswith("image/") and ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"}:
+    # Branch on the extension (server-normalized), never on the stored MIME,
+    # which comes from the client-supplied upload header and can lie. Served
+    # types are inert (image/pdf viewer or plain text) plus nosniff, so a
+    # mismatched body renders as an error, never as executable markup.
+    if ext in {"png", "jpg", "jpeg", "gif", "webp", "bmp"}:
+        media_type = "image/jpeg" if ext in {"jpg", "jpeg"} else f"image/{ext}"
         return FileResponse(
-            path, media_type=mime, headers={"X-Content-Type-Options": "nosniff"}
+            path, media_type=media_type, headers={"X-Content-Type-Options": "nosniff"}
         )
-    if ext == "pdf" or mime == "application/pdf":
+    if ext == "pdf":
         return FileResponse(
             path,
             media_type="application/pdf",
@@ -492,7 +496,7 @@ def preview_file(
                 "X-Content-Type-Options": "nosniff",
             },
         )
-    if mime.startswith("text/") or ext in PREVIEW_TEXT_EXTENSIONS:
+    if ext in PREVIEW_TEXT_EXTENSIONS:
         if record.size_bytes > PREVIEW_MAX_BYTES:
             raise HTTPException(status_code=413, detail="File too large to preview as text")
         # text/plain (never text/html) so embedded markup cannot execute.

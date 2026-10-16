@@ -1,133 +1,154 @@
-# FileMind — Phase 2 (Functional File Manager)
+# FileMind — AI-Powered Personal Knowledge & Productivity System
 
-Full-stack monorepo: `backend/` (FastAPI) + `frontend/` (React + Vite).
+FileMind unifies **file management**, **goal tracking**, **activity logging**, and
+**local-first AI assistance** in one full-stack app. Upload documents, connect them to
+goals, track courses / coding / projects / reading, and ask questions grounded in
+your own files — with semantic search, source-cited answers, and productivity
+insights that run **entirely on your machine** unless you explicitly opt into an
+external provider.
 
-## Prerequisites
-- Python 3.12+, Node 20+, Git, VS Code
-- PostgreSQL via `docker compose up -d` (optional; SQLite fallback is default)
+**Stack:** React 18 + TypeScript + Vite + Tailwind · FastAPI + SQLAlchemy + Alembic ·
+PostgreSQL (SQLite fallback) · scikit-learn TF-IDF + pypdf/docx extraction · Recharts
 
-## Backend
+## Features
+
+| Area | What works |
+|---|---|
+| **My Files** | Upload/download, folders, tags, categories (8 system + custom), favorites, metadata search, image/PDF/text previews, trash + restore, SHA-256 duplicates, filename-heuristic version groups with line diff |
+| **Knowledge Graph** | Interactive SVG of files, folders, goals, tasks, tags, categories (pan/zoom/drag, focus + depth, click-through navigation) |
+| **Smart Search** | Meaning-based TF-IDF search with snippets/scores + document Q&A that quotes passages with file/page citations |
+| **Goals** | 6 types (course, assignment, coding, project, reading, custom), tasks, milestones, per-type progress derivation, pace-based health, notes, links, reminders |
+| **Activity** | Manual logging (lectures, problems, reading…) + auto-logging (completions, uploads, commits); filtered feed |
+| **Dashboard** | Live metrics: active/completed/overdue/today, category progress, weekly chart, course/coding/project spotlights, 90-day heatmap |
+| **Calendar** | Month grid unifying tasks, goals, milestones, reminders, past activity; agenda view |
+| **AI Assistant** | Deterministic answers from your records with FACTS vs SUGGESTIONS separated; nothing is ever invented |
+| **Integrations** | GitHub (import repos as project goals, log commits), honest unavailable-states for LeetCode/course sites |
+| **Settings** | AI consent toggle (double-gated external processing), provider status, integrations |
+
+## Quickstart (local development)
+
+Prerequisites: Python 3.12+, Node 20+.
+
 ```powershell
+# Backend
 cd backend
 python -m venv .venv; .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 copy .env.example .env
 alembic upgrade head
-uvicorn app.main:app --reload --port 8000
-# health: http://localhost:8000/api/health
-pytest
-```
+uvicorn app.main:app --reload --port 8000   # http://localhost:8000/docs
 
-Migrations are the schema strategy (Alembic) — app code never calls `create_all`.
-New migration: `alembic/versions/*_phase2_auth_and_file_manager.py`
-(users, folders, categories, tags, files, file_tags).
-
-## Frontend
-```powershell
+# Frontend (new terminal)
 cd frontend
 npm install
-npm run dev
-# http://localhost:5173
+npm run dev                              # http://localhost:5173
 ```
 
-## Phase 2 — file manager
-- Auth (bcrypt + JWT, per-user 404s), folders (move/trash-cascade/explicit
-  permanent delete), file upload/download/preview, 8 system + custom categories,
-  tags, SHA-256 duplicates, trash/recovery, metadata search.
+PostgreSQL is optional for development (SQLite fallback works out of the box):
+`docker compose up -d postgres`, then set `DATABASE_URL` in `backend/.env`.
 
-## Phase 3 — goals & activity
-- **Goals**: 6 types (course, assignment, coding, project, reading, custom) with
-  per-type progress derivation (tasks / milestones / manual target+unit) and
-  pace-based health (on track / behind / at risk / overdue / completed / on hold).
-  Fields: category, priority, status, start/target dates, notes, external links,
-  reminder. `GET /api/goal-types` documents the defaults.
-- **Tasks & milestones**: CRUD nested under goals; completing either (or a goal,
-  or a progress change) writes an auto `Activity` row alongside the mutation.
-- **Activities**: fixed type vocabulary, manual logging with value + date +
-  optional goal link, filters, delete. Goal deletion preserves history
-  (goal_id nulled explicitly, never relying on DB-specific cascades).
-- File uploads auto-log `file_uploaded` with the real file id.
-- **Dashboard**: `GET /api/dashboard/summary` aggregates active/completed,
-  overdue + upcoming + today's tasks, reminders, progress by category/type,
-  weekly series, 90-day calendar, course/coding/project spotlights, recent
-  files and activities — all from live rows, category/date-range filterable.
-- **UI**: Goals (filters, create, detail editor, tasks/milestones, links,
-  history), Activity (log form, filters, feed), Dashboard (stat cards, today's
-  + overdue, recharts weekly bar, category bars, spotlights, heatmap).
+## Quickstart (Docker)
 
-## Phase 4 — files ↔ goals (done)
-- **`goal_files` join**: links at goal level or task level, with an optional
-  note. Duplicates rejected; trashed files cannot be linked; all lookups are
-  per-user (foreign ids → 404).
-- Goal detail returns `linked_files`, `file_count`, and `suggested_files`
-  (category-name match labeled rule-based — never presented as AI inference).
-- File responses carry `goal_count`; `GET /files/{id}/goals` lists referencing
-  goals/tasks for the file-side panel.
-- Deletes clean up explicitly: file delete, goal delete, and task delete all
-  detach their links in code (no reliance on DB-specific cascades).
-- **UI**: related-files section in goal editor (search, task picker, notes,
-  one-click suggestions, unlink), linked-goals section in file detail (goal +
-  task pickers, unlink), `?open=` deep links both ways and from the dashboard,
-  goal-link badges on file rows.
+```powershell
+docker compose up --build
+# App: http://localhost:8080   (API proxied at /api)
+```
 
-## Phase 5 — local-first AI (done)
-- **Extraction** (`document_contents`, offline): text/code, PDF with page refs,
-  DOCX — auto-run at upload (best-effort, never fails the upload), backfillable
-  via `POST /files/{id}/extract`. Unsupported types report honestly.
-- **Semantic search** (`POST /search/semantic`): sklearn TF-IDF over the user's
-  own corpus with chunk-level snippets and scores. Zero-overlap docs excluded.
-- **Suggestions** (`POST /files/{id}/suggest`): centroid-similarity category +
-  tag-vocabulary ranking, labeled `local-content`, accepted via normal PATCH.
-- **Document Q&A** (`POST /ask`): extractive answers = verbatim quotes + file
-  (and page) citations; no relevant passages → honest admission, file scoping
-  enforced per-user.
-- **Assistant** (`POST /assistant`): deterministic intents (today, on-track,
-  least-progress, files-for, week summary, prioritize, overdue, upcoming) over
-  live records, with FACTS vs SUGGESTIONS separated. Real gap fixed in testing:
-  due-today tasks now rank in prioritization.
-- **Consent**: double gate (global `AI_PROCESSING_ENABLED` + per-user toggle in
-  Settings) for any external provider; `Embedder`/`LLMProvider`/`VectorStore`
-  interfaces plus `document_vectors` table are the swap-in seams
-  (`GET /ai/status` reports the effective configuration).
-- **UI**: Smart Search (semantic + Ask with citations), file AI-insights panel
-  (summary, accept/reject suggestions, extracted text), Assistant chat with
-  facts/suggestions display, Settings consent page.
+Migrations run automatically at API startup. Override the dev-only secrets:
+`SECRET_KEY=... JWT_SECRET_KEY=... docker compose up --build`.
+> Dockerfiles and compose were authored in this repo but the container build has
+> not been executed in CI here — please run `docker compose up --build` once on
+> a Docker host to confirm before publishing.
 
-## Phase 6 — advanced (done)
-- **Knowledge graph** (`GET /api/graph`, computed per request): files, folders,
-  goals, tasks, tags, categories with contains/tagged/categorized/linked/
-  duplicate/version edges; focus + BFS depth + kind filters and hard caps.
-  Interactive SVG UI (pan, zoom, draggable nodes, click-through deep links).
-  Real fixes in testing: literal-vs-param route shadowing, taxonomy scoping.
-- **Versions** (`GET /files/versions`, `POST /files/compare`): filename-heuristic
-  groups (labeled, never auto-merged) + `difflib` line diff with stats.
-  Files tab with A/B picker and diff modal. No new tables.
-- **Calendar** (`GET /api/calendar`, `GET /api/reminders`): tasks, goals,
-  milestones, reminders, and past activity as one event feed; month-grid UI
-  with kind filters, agenda, and `?folder=`/`?open=` navigation. Reminder
-  delivery (email/push) remains out of scope and is documented.
-- **Integrations**: provider interface + status endpoint; working GitHub
-  provider (public repos → import as project goal, latest commit → `code_commit`
-  activity; offline/rate-limit/404 surface cleanly). LeetCode and course
-  platforms honestly reported unavailable (no public APIs) with manual-logging
-  guidance. UI lives in Settings. No migration required this phase.
+## Configuration
 
-## Security notes
-- Passwords hashed with bcrypt; JWT secret via `JWT_SECRET_KEY` (set it in `.env`).
-- SQLite FK enforcement (`PRAGMA foreign_keys=ON`) so `ON DELETE` actions hold.
-- Uploads stream to disk with a size cap; stored under
-  `STORAGE_DIR/<owner_id>/<uuid-hex>` — client filenames never touch the
-  filesystem (no path traversal, no overwrites).
-- Downloads served as `attachment`; previews as `text/plain` (never HTML) or
-  inline image/PDF with `nosniff`. Uploaded files are never executed.
-- External AI is disabled by default (`AI_PROCESSING_ENABLED=false`); Phase 2
-  suggestions are a local extension map, so no document bytes leave the server.
+All settings come from environment (see `backend/.env.example`):
 
-## Known limitations (to be addressed later)
-- No refresh tokens / password reset yet; single JWT lifetime (`JWT_EXPIRE_MINUTES`).
-- Semantic search refits TF-IDF per query (fine for personal corpora; swap in a
-  hosted embedder + `document_vectors` for larger scale).
-- No OCR binaries bundled (scanned images report no extractable text).
-- Folder permanent delete requires the folder to be empty (no recursive wipe).
-- No goal reminders delivery yet (reminder_at stored + surfaced; no email/push).
-- Frontend bundle grew with recharts (~630 KB) — code-split in a later pass.
+| Variable | Default | Purpose |
+|---|---|---|
+| `DATABASE_URL` | `sqlite:///./filemind_dev.db` | Postgres (`postgresql+psycopg2://…`) or SQLite |
+| `SECRET_KEY` / `JWT_SECRET_KEY` | `change-me-…` | Signing; **must be set in production** |
+| `JWT_EXPIRE_MINUTES` | `1440` | Session token lifetime |
+| `STORAGE_DIR` | `./storage` | File binaries (metadata stays in the DB) |
+| `MAX_UPLOAD_MB` | `50` | Upload cap, enforced while streaming |
+| `CORS_ORIGINS` | `http://localhost:5173` | Comma-separated allowed origins |
+| `AI_PROCESSING_ENABLED` | `false` | Global kill switch for external AI |
+| `LLM_BASE_URL` / `LLM_API_KEY` | _(empty)_ | OpenAI-compatible provider (empty = fully local) |
+| `LLM_MODEL` / `EMBEDDING_MODEL` | `gpt-4o-mini` / `tfidf-local` | External model names |
+
+External AI additionally requires the **per-user consent toggle** in Settings —
+documents never leave the server otherwise.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    UI[React SPA\npages + components] -->|REST + JWT| API[FastAPI routers]
+    API --> DB[(PostgreSQL / SQLite\nusers, files, goals, activities…)]
+    API --> Store[Local filesystem\ncontent-addressed blobs]
+    subgraph AI [AI services — local by default]
+        EXT[extractors\ntxt/pdf/docx]
+        SEM[TF-IDF search + extractive QA]
+        AST[assistant intent router]
+    end
+    API --> AI
+    EXT -.->|swap-in seam| LLM[External LLM/embeddings\nconsent-gated]
+```
+
+- **Backend:** `app/api` (routes) → `app/services` (storage, library, progress, `ai/`, `integrations`) → `app/models` + `app/schemas`. Alembic migrations only — no `create_all` in app code.
+- **Key invariants:** per-user scoping on every query (foreign ids → 404); client filenames never touch disk; downloads are `attachment`, previews are inert types + `nosniff`; destructive deletes require `?permanent=true`; history rows survive goal deletion; AI answers separate facts from suggestions.
+
+## API overview
+
+| Prefix | Endpoints |
+|---|---|
+| `/api/auth` | register, login, me |
+| `/api/folders`, `/api/files` | CRUD, upload/download/preview, search, duplicates, versions, compare, trash |
+| `/api/categories`, `/api/tags` | system + custom taxonomy |
+| `/api/goals`, `/api/tasks`, `/api/milestones` | goals with derived progress + health |
+| `/api/goals/{id}/files`, `/api/files/{id}/goals` | goal ↔ file links |
+| `/api/activities` | manual + auto activity log |
+| `/api/dashboard/summary` | all dashboard metrics from live rows |
+| `/api/search/semantic`, `/api/ask`, `/api/assistant` | local-first AI |
+| `/api/graph`, `/api/calendar`, `/api/reminders` | advanced views |
+| `/api/integrations/*` | provider status, GitHub import/log |
+| `/api/ai/status`, `/api/settings` | engine status, AI consent |
+| `/api/health`, `/api/ready` | liveness + DB readiness |
+
+## Testing
+
+```powershell
+cd backend
+python -m pytest        # 53 tests: auth, files, goals, links, AI, advanced, security
+cd ../frontend
+npm run build           # tsc + vite production build
+```
+
+Live end-to-end smoke scripts (register → upload → goals → AI → graph) were run
+against a real `uvicorn` server per phase; see commit history. Security behaviors
+are pinned by `tests/test_phase7_security.py` (upload caps, traversal, preview
+MIME safety, auth isolation, kill-switch precedence).
+
+## Security model (and honest limits)
+
+- bcrypt passwords, short-lived JWTs, per-user authorization everywhere.
+- Uploads: allowlist extensions, blocked executables, streamed size cap, UUID storage names, no path traversal, never executed.
+- Previews branch on server-normalized extension and serve inert content types.
+- AI: local extraction/search/summaries need no consent (nothing leaves the host);
+  external providers need the global switch **and** per-user consent; retrieved text
+  is wrapped as untrusted data in prompts.
+- Known limits: no refresh tokens / password reset; reminder delivery (email/push)
+  not implemented; no OCR for scanned images; TF-IDF refits per query (fine at
+  personal scale); frontend bundle ~680 KB (recharts — code-split later).
+
+## Project structure
+
+```
+backend/  app/{api,core,db,models,schemas,services/{ai,integrations}}  tests/  alembic/
+frontend/ src/{components,lib,pages}  Dockerfile  nginx.conf
+docker-compose.yml   # postgres + api + web
+```
+
+Built incrementally in 7 phases (foundation → files → goals/activity → links →
+local AI → advanced → hardening); each phase was implemented, tested against a live
+server, and committed separately — see the git history.

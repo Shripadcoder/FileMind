@@ -8,6 +8,7 @@ class Settings(BaseSettings):
 
     app_name: str = "FileMind API"
     database_url: str = "sqlite:///./filemind_dev.db"
+    cors_origins: str = "http://localhost:5173"
     secret_key: str = "change-me-in-local-env-only"
     jwt_secret_key: str = "change-me-in-local-env-only"
     jwt_expire_minutes: int = 60 * 24

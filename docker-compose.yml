@@ -1,3 +1,13 @@
+# FileMind full stack: Postgres (+pgvector, reserved for future vector search),
+# FastAPI backend, and the nginx-served React frontend.
+#
+# Start everything:  docker compose up --build
+# App:                http://localhost:8080   (API proxied at /api)
+# Direct API access:  http://localhost:8000/docs
+#
+# First run applies all Alembic migrations automatically (see backend CMD).
+# Override dev-only secrets via environment, e.g.:
+#   SECRET_KEY=... JWT_SECRET_KEY=... docker compose up --build
 services:
   postgres:
     # pgvector image keeps the Phase 5 semantic-search path open.
@@ -11,6 +21,38 @@ services:
       - "5432:5432"
     volumes:
       - filemind-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U filemind"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: ./backend
+    container_name: filemind-api
+    environment:
+      DATABASE_URL: postgresql+psycopg2://filemind:filemind_dev_only@postgres:5432/filemind
+      SECRET_KEY: ${SECRET_KEY:-change-me-compose-only}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-compose-only}
+      STORAGE_DIR: /data/storage
+      CORS_ORIGINS: http://localhost:8080
+      AI_PROCESSING_ENABLED: "false"
+    ports:
+      - "8000:8000"
+    volumes:
+      - filemind-storage:/data/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: ./frontend
+    container_name: filemind-web
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   filemind-pgdata:
+  filemind-storage:
