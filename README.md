@@ -11,6 +11,7 @@ external provider.
 PostgreSQL (SQLite fallback) · scikit-learn TF-IDF + pypdf/docx extraction · Recharts
 
 ## Demo
+<img width="1920" height="1080" alt="Screenshot (262)" src="https://github.com/user-attachments/assets/26a7292b-86b1-4952-867b-2de61935a594" />
 
 ## Features
 
