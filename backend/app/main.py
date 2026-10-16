@@ -1,5 +1,7 @@
 import logging
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -10,8 +12,16 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("filemind")
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Log non-sensitive config only.
+    logger.info("database_configured=%s", "sqlite" if "sqlite" in settings.database_url else "postgres")
+    logger.info("ai_processing_enabled=%s", settings.ai_processing_enabled)
+    yield
+
+
 def create_app() -> FastAPI:
-    app = FastAPI(title=settings.app_name)
+    app = FastAPI(title=settings.app_name, lifespan=lifespan)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["http://localhost:5173"],
@@ -24,10 +34,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-
-
-@app.on_event("startup")
-def _log_config() -> None:
-    # Log non-sensitive config only.
-    logger.info("database_configured=%s", "sqlite" if "sqlite" in settings.database_url else "postgres")
-    logger.info("ai_processing_enabled=%s", settings.ai_processing_enabled)
