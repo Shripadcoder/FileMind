@@ -93,6 +93,25 @@ npm run dev
   (summary, accept/reject suggestions, extracted text), Assistant chat with
   facts/suggestions display, Settings consent page.
 
+## Phase 6 — advanced (done)
+- **Knowledge graph** (`GET /api/graph`, computed per request): files, folders,
+  goals, tasks, tags, categories with contains/tagged/categorized/linked/
+  duplicate/version edges; focus + BFS depth + kind filters and hard caps.
+  Interactive SVG UI (pan, zoom, draggable nodes, click-through deep links).
+  Real fixes in testing: literal-vs-param route shadowing, taxonomy scoping.
+- **Versions** (`GET /files/versions`, `POST /files/compare`): filename-heuristic
+  groups (labeled, never auto-merged) + `difflib` line diff with stats.
+  Files tab with A/B picker and diff modal. No new tables.
+- **Calendar** (`GET /api/calendar`, `GET /api/reminders`): tasks, goals,
+  milestones, reminders, and past activity as one event feed; month-grid UI
+  with kind filters, agenda, and `?folder=`/`?open=` navigation. Reminder
+  delivery (email/push) remains out of scope and is documented.
+- **Integrations**: provider interface + status endpoint; working GitHub
+  provider (public repos → import as project goal, latest commit → `code_commit`
+  activity; offline/rate-limit/404 surface cleanly). LeetCode and course
+  platforms honestly reported unavailable (no public APIs) with manual-logging
+  guidance. UI lives in Settings. No migration required this phase.
+
 ## Security notes
 - Passwords hashed with bcrypt; JWT secret via `JWT_SECRET_KEY` (set it in `.env`).
 - SQLite FK enforcement (`PRAGMA foreign_keys=ON`) so `ON DELETE` actions hold.

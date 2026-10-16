@@ -19,10 +19,12 @@ from app.core.time import utcnow
 from app.services.activity_log import log_activity
 from app.models.ai import DocumentContent, DocumentVector
 from app.models.file import File, file_tags
+from app.models.folder import Folder
 from app.models.links import GoalFile
 from app.models.taxonomy import Category, Tag
 from app.models.user import User
 from app.db.session import get_db
+from app.schemas.advanced import CompareIn, CompareOut, VersionGroupOut
 from app.schemas.library import DuplicateGroup, FileOut, FileUpdate, FileUploadOut
 from app.services.library import (
     SUGGESTION_SOURCE,
@@ -35,6 +37,7 @@ from app.services.library import (
     suggest_category_name,
 )
 from app.services.storage import OversizeError, get_storage, new_stored_name, remove_blob_quietly
+from app.services import versions as version_service
 
 router = APIRouter(prefix="/files", tags=["files"])
 
@@ -287,6 +290,55 @@ def list_duplicates(
             groups[f.sha256] = group
         group.files.append(file_to_out(f, counts))
     return list(groups.values())
+
+
+@router.get("/versions", response_model=list[VersionGroupOut])
+def version_groups(
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    """Likely document versions (filename heuristic). Literal route lives here
+    so it cannot be shadowed by /{file_id}."""
+    files = list(db.execute(
+        select(File).where(File.owner_id == current.id, File.trashed_at.is_(None))
+        .order_by(File.created_at)).scalars())
+    folder_names = {f.id: f.name for f in db.execute(
+        select(Folder).where(Folder.owner_id == current.id)).scalars()}
+    counts, links = duplicate_counts(db, current), link_counts(db, current)
+    out = []
+    for group in version_service.group_versions(files):
+        out.append(VersionGroupOut(
+            key=group["key"], stem=group["stem"], folder_id=group["folder_id"],
+            folder_name=folder_names.get(group["folder_id"]),
+            extension=group["extension"], reason=group["reason"], source=group["source"],
+            files=[file_to_out(f, counts, links) for f in group["files"]]))
+    return out
+
+
+@router.post("/compare", response_model=CompareOut)
+def compare_files(
+    body: CompareIn,
+    db: Session = Depends(get_db),
+    current: User = Depends(get_current_user),
+):
+    if body.file_id_a == body.file_id_b:
+        raise HTTPException(status_code=422, detail="Choose two different files")
+    file_a = get_owned_file(db, current, body.file_id_a)
+    file_b = get_owned_file(db, current, body.file_id_b)
+    content_a = db.get(DocumentContent, file_a.id)
+    content_b = db.get(DocumentContent, file_b.id)
+    missing = [name for name, content in
+               ((file_a.original_filename, content_a), (file_b.original_filename, content_b))
+               if content is None or content.owner_id != current.id or not content.text.strip()]
+    if missing:
+        raise HTTPException(
+            status_code=415,
+            detail=f"No extractable text for: {', '.join(missing)}. "
+                   "Comparison needs extracted text (POST /files/{id}/extract).")
+    diff = version_service.compare_texts(
+        content_a.text, content_b.text,  # type: ignore[union-attr]
+        file_a.original_filename, file_b.original_filename, max_lines=body.max_lines)
+    return CompareOut(file_a=file_a.id, file_b=file_b.id, **diff)
 
 
 @router.get("/{file_id}", response_model=FileOut)

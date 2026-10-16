@@ -45,9 +45,12 @@ import {
   updateFile,
   updateFolder,
   uploadFile,
+  versionGroups as fetchVersionGroups,
+  compareFiles,
 } from "../lib/api";
 import type {
   Category,
+  CompareOut,
   ContentOut,
   DuplicateGroup,
   FileItem,
@@ -58,10 +61,11 @@ import type {
   SummaryOut,
   TaskItem,
   UploadResult,
+  VersionGroup,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
-type View = "browse" | "duplicates" | "trash";
+type View = "browse" | "duplicates" | "versions" | "trash";
 
 const MIME_FILTERS = [
   { value: "", label: "All types" },
@@ -400,6 +404,10 @@ export default function Files() {
   const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
   const [trashFiles, setTrashFiles] = useState<FileItem[]>([]);
   const [trashFolders, setTrashFolders] = useState<Folder[]>([]);
+  const [versionGroups, setVersionGroups] = useState<VersionGroup[]>([]);
+  const [compareA, setCompareA] = useState<number | null>(null);
+  const [compareB, setCompareB] = useState<number | null>(null);
+  const [compareResult, setCompareResult] = useState<CompareOut | null>(null);
   const [selected, setSelected] = useState<FileItem | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -479,6 +487,7 @@ export default function Files() {
       }
     }
     if (view === "duplicates") setDuplicates(await listDuplicates());
+    if (view === "versions") setVersionGroups(await fetchVersionGroups());
     if (view === "trash") {
       setTrashFiles(await listFiles({ trashed_only: true, limit: 200 }));
       setTrashFolders(all.filter((f) => f.is_trashed));
@@ -493,19 +502,25 @@ export default function Files() {
       .finally(() => setBusy(false));
   }, [user, reload]);
 
-  // Deep link: /files?open=<id> (used by goal links and dashboard entries).
+  // Deep links: /files?open=<id> and /files?folder=<id>
+  // (used by goal links, dashboard entries, and the knowledge graph).
   useEffect(() => {
     if (!user) return;
     const openId = searchParams.get("open");
+    const folderId = searchParams.get("folder");
+    if (folderId && currentFolderId === null) {
+      const fid = Number(folderId);
+      if (Number.isInteger(fid)) setCurrentFolderId(fid);
+    }
     if (openId && !selected) {
       const id = Number(openId);
       if (Number.isInteger(id)) {
         getFile(id)
           .then(setSelected)
           .catch((e) => setError(errMsg(e)));
-        setSearchParams({}, { replace: true });
       }
     }
+    if (openId || folderId) setSearchParams({}, { replace: true });
     // Intentionally run once per login; selection changes must not re-trigger.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
@@ -598,7 +613,7 @@ export default function Files() {
       <div className="flex flex-wrap items-center gap-2">
         <h1 className="text-2xl font-bold">My Files</h1>
         <div className="ml-auto flex gap-1" role="tablist" aria-label="File views">
-          {(["browse", "duplicates", "trash"] as const).map((v) => (
+          {(["browse", "duplicates", "versions", "trash"] as const).map((v) => (
             <button
               key={v}
               role="tab"
@@ -1028,6 +1043,78 @@ export default function Files() {
         </section>
       )}
 
+      {view === "versions" && (
+        <section aria-label="Document versions" className="flex flex-col gap-3">
+          <p className="text-sm text-slate-500">
+            Likely versions are grouped by a filename heuristic (same folder, same type, names
+            differing only by version-like tokens). Pick any two files to compare their extracted
+            text line by line.
+          </p>
+          {versionGroups.length === 0 ? (
+            <p className="text-sm text-slate-500">
+              No version groups detected. Try names like <code>report-v1.txt</code> and{" "}
+              <code>report-v2.txt</code> in the same folder.
+            </p>
+          ) : (
+            versionGroups.map((g) => (
+              <div key={g.key} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+                <p className="text-sm font-semibold">
+                  {g.stem}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    {g.folder_name ?? "home"} · {g.extension} · {g.reason}
+                  </span>
+                </p>
+                <ul className="mt-2 flex flex-col gap-1">
+                  {g.files.map((f) => (
+                    <li key={f.id} className="flex items-center gap-2 text-sm">
+                      <label className="flex items-center gap-1 text-xs" title="Compare as A (older)">
+                        <input
+                          type="radio"
+                          name={`cmp-a-${g.key}`}
+                          checked={compareA === f.id}
+                          onChange={() => setCompareA(f.id)}
+                          aria-label={`Compare ${f.original_filename} as A`}
+                        />
+                        A
+                      </label>
+                      <label className="flex items-center gap-1 text-xs" title="Compare as B (newer)">
+                        <input
+                          type="radio"
+                          name={`cmp-b-${g.key}`}
+                          checked={compareB === f.id}
+                          onChange={() => setCompareB(f.id)}
+                          aria-label={`Compare ${f.original_filename} as B`}
+                        />
+                        B
+                      </label>
+                      <span className="flex-1 truncate">{f.original_filename}</span>
+                      <span className="text-xs text-slate-500">{formatDate(f.created_at)}</span>
+                      <button onClick={() => void download(f)} className="text-xs underline">
+                        Download
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))
+          )}
+          <div>
+            <button
+              disabled={compareA === null || compareB === null || compareA === compareB}
+              onClick={() => {
+                if (compareA === null || compareB === null) return;
+                compareFiles(compareA, compareB)
+                  .then(setCompareResult)
+                  .catch((err) => setError(errMsg(err)));
+              }}
+              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
+            >
+              Compare selected
+            </button>
+          </div>
+        </section>
+      )}
+
       {view === "trash" && (
         <section aria-label="Trash" className="flex flex-col gap-3">
           <p className="text-sm text-slate-500">
@@ -1132,6 +1219,63 @@ export default function Files() {
           }}
         />
       )}
+
+      {compareResult && (
+        <CompareModal result={compareResult} onClose={() => setCompareResult(null)} />
+      )}
+    </div>
+  );
+}
+
+function CompareModal({ result, onClose }: { result: CompareOut; onClose: () => void }) {
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Compare ${result.names.a} with ${result.names.b}`}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white p-4 dark:bg-slate-900"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <h2 className="truncate font-bold">
+            {result.names.a} → {result.names.b}
+          </h2>
+          <button onClick={onClose} className="text-sm underline" aria-label="Close comparison">
+            Close
+          </button>
+        </div>
+        <p className="mb-2 text-xs text-slate-500">
+          Similarity {(result.similarity * 100).toFixed(1)}% · +{result.added_lines} lines ·
+          −{result.removed_lines} lines{result.truncated ? " · diff truncated" : ""}
+        </p>
+        <div className="min-h-0 flex-1 overflow-auto rounded border border-slate-200 font-mono text-xs dark:border-slate-700">
+          {result.opcodes.map((op, i) => {
+            if (op.type === "equal") {
+              return (
+                <p key={i} className="px-2 py-0.5 text-slate-400">
+                  … {op.a[1] - op.a[0]} unchanged lines …
+                </p>
+              );
+            }
+            return (
+              <div
+                key={i}
+                className={op.type === "added" ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}
+              >
+                {op.lines.map((line, j) => (
+                  <p key={j} className="whitespace-pre-wrap break-words px-2 py-0.5">
+                    <span aria-hidden>{op.type === "added" ? "+" : "−"}</span> {line}
+                  </p>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

@@ -9,10 +9,13 @@ import app.models  # noqa: F401  (register tables on Base.metadata for Alembic/m
 from app.api.ai import router as ai_router
 from app.api.activities import router as activities_router
 from app.api.auth import router as auth_router
+from app.api.calendar import router as calendar_router
 from app.api.dashboard import router as dashboard_router
 from app.api.files import router as files_router
 from app.api.folders import router as folders_router
 from app.api.goals import router as goals_router
+from app.api.graph import router as graph_router
+from app.api.integrations import router as integrations_router
 from app.api.links import router as links_router
 from app.api.health import router as health_router
 from app.api.taxonomy import router as taxonomy_router
@@ -58,6 +61,9 @@ def create_app() -> FastAPI:
     app.include_router(folders_router, prefix="/api")
     app.include_router(files_router, prefix="/api")
     app.include_router(goals_router, prefix="/api")
+    app.include_router(graph_router, prefix="/api")
+    app.include_router(calendar_router, prefix="/api")
+    app.include_router(integrations_router, prefix="/api")
     app.include_router(links_router, prefix="/api")
     app.include_router(activities_router, prefix="/api")
     app.include_router(dashboard_router, prefix="/api")

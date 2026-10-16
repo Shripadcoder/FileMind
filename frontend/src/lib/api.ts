@@ -707,6 +707,7 @@ export const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   file_uploaded: "File uploaded",
   document_reviewed: "Document reviewed",
   reading_session: "Reading session",
+  code_commit: "Code commit",
   note: "Note",
 };
 
@@ -907,5 +908,172 @@ export function updateAISettings(consent: boolean): Promise<AISettings> {
   return apiFetch("/api/settings", {
     method: "PATCH",
     body: JSON.stringify({ ai_consent_external: consent }),
+  });
+}
+
+/* ---------- advanced (Phase 6) ---------- */
+
+export interface GraphNode {
+  id: string;
+  kind: string;
+  ref_id: number;
+  label: string;
+  mime?: string | null;
+  favorite?: boolean;
+  category?: string | null;
+  goal_type?: string | null;
+  status?: string | null;
+  goal_id?: number | null;
+}
+
+export interface GraphEdge {
+  source: string;
+  target: string;
+  rel: string;
+  task_id?: number | null;
+  task_title?: string | null;
+  stem?: string | null;
+}
+
+export interface GraphOut {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  truncated: boolean;
+  focus: string | null;
+}
+
+export interface VersionGroup {
+  key: string;
+  stem: string;
+  folder_id: number | null;
+  folder_name: string | null;
+  extension: string;
+  reason: string;
+  source: string;
+  files: FileItem[];
+}
+
+export interface DiffOpcode {
+  type: string;
+  a: number[];
+  b: number[];
+  lines: string[];
+}
+
+export interface CompareOut {
+  file_a: number;
+  file_b: number;
+  names: Record<string, string>;
+  similarity: number;
+  added_lines: number;
+  removed_lines: number;
+  total_a: number;
+  total_b: number;
+  truncated: boolean;
+  opcodes: DiffOpcode[];
+}
+
+export interface CalendarEvent {
+  id: string;
+  kind: string;
+  title: string;
+  date: string;
+  datetime: string | null;
+  goal_id: number | null;
+  goal_title: string | null;
+  ref_id: number | null;
+}
+
+export interface Reminder {
+  goal_id: number;
+  goal_title: string;
+  reminder_at: string;
+  target_date: string | null;
+}
+
+export interface ProviderStatus {
+  key: string;
+  label: string;
+  available: boolean;
+  note: string;
+}
+
+export interface GitHubRepo {
+  owner: string;
+  name: string;
+  description: string;
+  html_url: string;
+  language: string | null;
+  stars: number;
+  updated_at: string | null;
+}
+
+export function knowledgeGraph(params: {
+  focus_kind?: string;
+  focus_id?: number;
+  depth?: number;
+  kinds?: string;
+} = {}): Promise<GraphOut> {
+  const p = new URLSearchParams();
+  if (params.focus_kind) p.set("focus_kind", params.focus_kind);
+  if (params.focus_id !== undefined) p.set("focus_id", String(params.focus_id));
+  if (params.depth !== undefined) p.set("depth", String(params.depth));
+  if (params.kinds) p.set("kinds", params.kinds);
+  const qs = p.toString();
+  return apiFetch(`/api/graph${qs ? `?${qs}` : ""}`);
+}
+
+export function versionGroups(): Promise<VersionGroup[]> {
+  return apiFetch("/api/files/versions");
+}
+
+export function compareFiles(a: number, b: number): Promise<CompareOut> {
+  return apiFetch("/api/files/compare", {
+    method: "POST",
+    body: JSON.stringify({ file_id_a: a, file_id_b: b }),
+  });
+}
+
+export function calendarEvents(
+  start: string,
+  end: string,
+  kinds?: string,
+): Promise<CalendarEvent[]> {
+  const p = new URLSearchParams({ start, end });
+  if (kinds) p.set("kinds", kinds);
+  return apiFetch(`/api/calendar?${p.toString()}`);
+}
+
+export function upcomingReminders(days = 30): Promise<Reminder[]> {
+  return apiFetch(`/api/reminders?days=${days}`);
+}
+
+export function integrationsStatus(): Promise<{ providers: ProviderStatus[] }> {
+  return apiFetch("/api/integrations/status");
+}
+
+export function githubRepos(username: string): Promise<GitHubRepo[]> {
+  return apiFetch(`/api/integrations/github/repos?username=${encodeURIComponent(username)}`);
+}
+
+export function githubImport(
+  username: string,
+  repo: string,
+  category: string,
+): Promise<GoalDetailWithLinks> {
+  return apiFetch("/api/integrations/github/import", {
+    method: "POST",
+    body: JSON.stringify({ username, repo, category }),
+  });
+}
+
+export function githubLogActivity(
+  username: string,
+  repo: string,
+  goalId: number | null,
+): Promise<{ id: number; title: string }> {
+  return apiFetch("/api/integrations/github/log-activity", {
+    method: "POST",
+    body: JSON.stringify({ username, repo, goal_id: goalId }),
   });
 }

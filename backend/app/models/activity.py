@@ -21,6 +21,7 @@ ACTIVITY_TYPES = (
     "file_uploaded",
     "document_reviewed",
     "reading_session",
+    "code_commit",
     "note",
 )
 
