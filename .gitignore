@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+backend/filemind_dev.db*
+
+# Env / secrets - never commit real values
+.env
+backend/.env
+
+# Storage (local file binaries stay out of git)
+backend/storage/
+storage/
+
+# Alembic versions are committed; ignore local overrides
+# Node
+frontend/node_modules/
+frontend/dist/
+
+# Misc
+.vscode/
+.DS_Store

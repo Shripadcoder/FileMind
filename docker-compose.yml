@@ -1,0 +1,16 @@
+services:
+  postgres:
+    # pgvector image keeps the Phase 5 semantic-search path open.
+    image: pgvector/pgvector:pg16
+    container_name: filemind-postgres
+    environment:
+      POSTGRES_USER: filemind
+      POSTGRES_PASSWORD: filemind_dev_only
+      POSTGRES_DB: filemind
+    ports:
+      - "5432:5432"
+    volumes:
+      - filemind-pgdata:/var/lib/postgresql/data
+
+volumes:
+  filemind-pgdata:
