@@ -10,6 +10,8 @@ external provider.
 **Stack:** React 18 + TypeScript + Vite + Tailwind · FastAPI + SQLAlchemy + Alembic ·
 PostgreSQL (SQLite fallback) · scikit-learn TF-IDF + pypdf/docx extraction · Recharts
 
+## Demo
+
 ## Features
 
 | Area | What works |
