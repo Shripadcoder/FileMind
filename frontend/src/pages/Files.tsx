@@ -6,8 +6,17 @@ import {
   Download,
   Eye,
   File as FileIcon,
+  FileArchive,
+  FileCode2,
+  FileImage,
+  FileSpreadsheet,
+  FileText,
   Folder as FolderIcon,
   Heart,
+  Home,
+  LayoutGrid,
+  List,
+  Presentation,
   RotateCcw,
   Star,
   Trash2,
@@ -64,6 +73,42 @@ import type {
   VersionGroup,
 } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { Badge, Button, EmptyState, Notice, PageHeader, SegmentedTabs, Spinner, cardCls, inputCls } from "../components/ui";
+
+function fileKind(filename: string): "pdf" | "image" | "code" | "sheet" | "slides" | "archive" | "doc" | "other" {
+  const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+  if (ext === "pdf") return "pdf";
+  if (["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"].includes(ext)) return "image";
+  if (["py", "js", "ts", "tsx", "jsx", "java", "c", "h", "cpp", "go", "rs", "rb", "php", "html", "css", "json", "xml", "yml", "yaml", "sql", "sh", "ipynb"].includes(ext)) return "code";
+  if (["xls", "xlsx", "ods", "csv"].includes(ext)) return "sheet";
+  if (["ppt", "pptx", "odp"].includes(ext)) return "slides";
+  if (["zip", "tar", "gz", "rar", "7z"].includes(ext)) return "archive";
+  if (["doc", "docx", "odt", "txt", "md", "rtf"].includes(ext)) return "doc";
+  return "other";
+}
+
+function FileTypeIcon({ filename, size = 16 }: { filename: string; size?: number }) {
+  const kind = fileKind(filename);
+  const cls = "shrink-0";
+  switch (kind) {
+    case "pdf":
+      return <FileText size={size} className={`${cls} text-red-500`} aria-hidden />;
+    case "image":
+      return <FileImage size={size} className={`${cls} text-violet-500`} aria-hidden />;
+    case "code":
+      return <FileCode2 size={size} className={`${cls} text-indigo-500`} aria-hidden />;
+    case "sheet":
+      return <FileSpreadsheet size={size} className={`${cls} text-green-600`} aria-hidden />;
+    case "slides":
+      return <Presentation size={size} className={`${cls} text-amber-500`} aria-hidden />;
+    case "archive":
+      return <FileArchive size={size} className={`${cls} text-slate-400`} aria-hidden />;
+    case "doc":
+      return <FileText size={size} className={`${cls} text-blue-500`} aria-hidden />;
+    default:
+      return <FileIcon size={size} className={`${cls} text-slate-400`} aria-hidden />;
+  }
+}
 
 type View = "browse" | "duplicates" | "versions" | "trash";
 
@@ -101,7 +146,7 @@ function ConfirmDialog({
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm rounded-xl bg-white p-5 dark:bg-slate-900"
+        className="fm-pop w-full max-w-sm rounded-xl border border-slate-200 bg-white p-5 shadow-pop dark:border-slate-700 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="flex items-center gap-2 font-bold">
@@ -243,27 +288,27 @@ function FileDetail({
   }
 
   return (
-    <aside aria-label="File details" className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-      <div className="flex items-start justify-between gap-2">
-        <h2 className="break-all font-bold">{file.original_filename}</h2>
-        <button onClick={onClose} className="text-sm text-slate-500 underline" aria-label="Close details">
-          Close
+    <aside aria-label="File details" className={`${cardCls} fm-fade p-4 md:p-5`}>
+      <div className="flex items-start gap-2">
+        <FileTypeIcon filename={file.original_filename} size={22} />
+        <h2 className="min-w-0 flex-1 break-all text-[15px] font-bold tracking-tight">{file.original_filename}</h2>
+        <button onClick={onClose} className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" aria-label="Close details">
+          ✕
         </button>
       </div>
 
-      <dl className="mt-3 grid grid-cols-2 gap-2 text-sm">
-        <div><dt className="text-slate-500">Size</dt><dd>{formatBytes(file.size_bytes)}</dd></div>
-        <div><dt className="text-slate-500">Type</dt><dd className="break-all">{file.mime_type}</dd></div>
-        <div><dt className="text-slate-500">Uploaded</dt><dd>{formatDate(file.created_at)}</dd></div>
-        <div><dt className="text-slate-500">Modified</dt><dd>{formatDate(file.updated_at)}</dd></div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-lg bg-slate-50 p-3 text-[13px] dark:bg-slate-800/60">
+        <div><dt className="text-xs text-slate-400">Size</dt><dd className="fm-num font-medium">{formatBytes(file.size_bytes)}</dd></div>
+        <div><dt className="text-xs text-slate-400">Type</dt><dd className="break-all font-medium">{file.mime_type}</dd></div>
+        <div><dt className="text-xs text-slate-400">Uploaded</dt><dd className="font-medium">{formatDate(file.created_at)}</dd></div>
+        <div><dt className="text-xs text-slate-400">Modified</dt><dd className="font-medium">{formatDate(file.updated_at)}</dd></div>
         <div className="col-span-2">
-          <dt className="text-slate-500">SHA-256</dt>
+          <dt className="text-xs text-slate-400">SHA-256</dt>
           <dd className="break-all font-mono text-xs">{file.sha256}</dd>
         </div>
         {file.duplicate_count > 0 && (
           <div className="col-span-2">
-            <dt className="text-slate-500">Duplicates</dt>
-            <dd>{file.duplicate_count} exact cop{file.duplicate_count === 1 ? "y" : "ies"} (same hash)</dd>
+            <dd><Badge tone="amber">{file.duplicate_count} exact {file.duplicate_count === 1 ? "copy" : "copies"} (same hash)</Badge></dd>
           </div>
         )}
       </dl>
@@ -437,6 +482,12 @@ export default function Files() {
   // Preview
   const [preview, setPreview] = useState<{ file: FileItem; url: string; kind: string } | null>(null);
 
+  // Browse layout + drag-and-drop upload state.
+  const [layout, setLayout] = useState<"list" | "grid">(
+    () => (localStorage.getItem("filemind-files-layout") as "list" | "grid") || "list",
+  );
+  const [dragOver, setDragOver] = useState(false);
+
   const searching = q.trim() !== "" || category !== "" || tag.trim() !== "" || mime !== "" || favoritesOnly;
 
   const notify = useCallback((msg: string | null, isError = false) => {
@@ -559,18 +610,12 @@ export default function Files() {
     }
   }
 
-  async function onUpload(e: FormEvent) {
-    e.preventDefault();
-    const input = fileInput.current;
-    if (!input?.files?.length) {
-      notify("Choose a file to upload.", true);
-      return;
-    }
+  async function doUpload(picked: File) {
     setBusy(true);
     notify(null);
     try {
       const result = await uploadFile({
-        file: input.files[0],
+        file: picked,
         folderId: currentFolderId,
         category: uploadCategory || undefined,
         description: uploadDescription,
@@ -578,7 +623,7 @@ export default function Files() {
       });
       setLastUpload(result);
       setSelected(result);
-      input.value = "";
+      if (fileInput.current) fileInput.current.value = "";
       setUploadDescription("");
       setUploadTags("");
       await reload();
@@ -593,79 +638,107 @@ export default function Files() {
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Loading…</p>;
+  async function onUpload(e: FormEvent) {
+    e.preventDefault();
+    const input = fileInput.current;
+    if (!input?.files?.length) {
+      notify("Choose a file to upload.", true);
+      return;
+    }
+    await doUpload(input.files[0]);
+  }
+
+  if (loading) return <Spinner />;
   if (!user) {
     return (
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">My Files</h1>
-        <p className="text-sm text-slate-500">
-          Sign in to manage your private file library.{" "}
-          <Link to="/login" className="underline">
-            Go to sign in
-          </Link>
-        </p>
+      <div className="flex flex-col gap-4">
+        <PageHeader title="My Files" sub="Sign in to manage your private file library." />
+        <EmptyState
+          title="You're signed out"
+          hint="Your library is private to your account."
+          action={<Link to="/login" className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white">Sign in</Link>}
+        />
       </div>
     );
   }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h1 className="text-2xl font-bold">My Files</h1>
-        <div className="ml-auto flex gap-1" role="tablist" aria-label="File views">
-          {(["browse", "duplicates", "versions", "trash"] as const).map((v) => (
-            <button
-              key={v}
-              role="tab"
-              aria-selected={view === v}
-              onClick={() => {
-                setView(v);
-                setSelected(null);
-              }}
-              className={`rounded-lg px-3 py-1.5 text-sm font-medium capitalize ${
-                view === v
-                  ? "bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900"
-                  : "border border-slate-200 dark:border-slate-700"
-              }`}
-            >
-              {v}
-            </button>
-          ))}
-        </div>
-      </div>
+      <PageHeader
+        title="My Files"
+        sub={currentFolderId !== null ? `Browsing ${folderNameById.get(currentFolderId) ?? "folder"}` : "Your private document library."}
+        actions={
+          view === "browse" && (
+            <div className="flex rounded-lg border border-slate-200 p-0.5 dark:border-slate-700" role="group" aria-label="Layout">
+              <button
+                onClick={() => {
+                  setLayout("list");
+                  localStorage.setItem("filemind-files-layout", "list");
+                }}
+                aria-pressed={layout === "list"}
+                title="List view"
+                className={`rounded-md p-1.5 ${layout === "list" ? "bg-slate-200 dark:bg-slate-700" : "text-slate-400"}`}
+              >
+                <List size={15} />
+              </button>
+              <button
+                onClick={() => {
+                  setLayout("grid");
+                  localStorage.setItem("filemind-files-layout", "grid");
+                }}
+                aria-pressed={layout === "grid"}
+                title="Grid view"
+                className={`rounded-md p-1.5 ${layout === "grid" ? "bg-slate-200 dark:bg-slate-700" : "text-slate-400"}`}
+              >
+                <LayoutGrid size={15} />
+              </button>
+            </div>
+          )
+        }
+      />
+      <SegmentedTabs
+        label="File views"
+        value={view}
+        onChange={(v) => {
+          setView(v);
+          setSelected(null);
+        }}
+        options={[
+          { value: "browse", label: "Browse" },
+          { value: "duplicates", label: "Duplicates" },
+          { value: "versions", label: "Versions" },
+          { value: "trash", label: "Trash" },
+        ]}
+      />
 
-      {notice && (
-        <div role="status" className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">
-          {notice}
-        </div>
-      )}
-      {error && (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      {notice && <Notice kind="ok">{notice}</Notice>}
+      {error && <Notice kind="error">{error}</Notice>}
 
       {view === "browse" && (
         <>
-          <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-sm">
+          <nav aria-label="Breadcrumb" className={`${cardCls} flex flex-wrap items-center gap-1 px-3 py-2 text-sm`}>
             <button
               onClick={() => {
                 setCurrentFolderId(null);
                 setSelected(null);
               }}
-              className={`rounded px-1 underline ${currentFolderId === null ? "font-bold" : ""}`}
+              className={`flex items-center gap-1.5 rounded-md px-2 py-1 font-medium transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                currentFolderId === null ? "text-indigo-600 dark:text-indigo-300" : "text-slate-500"
+              }`}
             >
-              Home
+              <Home size={14} aria-hidden /> Home
             </button>
             {path.map((f) => (
               <span key={f.id} className="flex items-center gap-1">
-                <span aria-hidden>/</span>
+                <span aria-hidden className="text-slate-300 dark:text-slate-600">/</span>
                 <button
                   onClick={() => {
                     setCurrentFolderId(f.id);
                     setSelected(null);
                   }}
-                  className={`rounded px-1 underline ${currentFolderId === f.id ? "font-bold" : ""}`}
+                  className={`rounded-md px-2 py-1 transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 ${
+                    currentFolderId === f.id ? "font-semibold text-indigo-600 dark:text-indigo-300" : "text-slate-600 dark:text-slate-300"
+                  }`}
                 >
                   {f.name}
                 </button>
@@ -674,7 +747,7 @@ export default function Files() {
           </nav>
 
           <form
-            className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+            className={`${cardCls} grid grid-cols-2 gap-2 p-3 sm:grid-cols-3 lg:flex lg:flex-wrap lg:items-center`}
             onSubmit={(e) => {
               e.preventDefault();
               void reload().catch((err) => setError(errMsg(err)));
@@ -685,13 +758,13 @@ export default function Files() {
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search filename, description, type…"
               aria-label="Search files"
-              className="min-w-40 flex-1 rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+              className={`${inputCls} col-span-2 min-w-0 flex-1 lg:col-span-1`}
             />
             <select
               value={category}
               onChange={(e) => setCategory(e.target.value)}
               aria-label="Filter by category"
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+              className={inputCls}
             >
               <option value="">All categories</option>
               {categories.map((c) => (
@@ -705,13 +778,13 @@ export default function Files() {
               onChange={(e) => setTag(e.target.value)}
               placeholder="tag"
               aria-label="Filter by tag"
-              className="w-24 rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+              className={`${inputCls} w-full lg:w-24`}
             />
             <select
               value={mime}
               onChange={(e) => setMime(e.target.value)}
               aria-label="Filter by file type"
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+              className={inputCls}
             >
               {MIME_FILTERS.map((m) => (
                 <option key={m.label} value={m.value}>
@@ -719,53 +792,51 @@ export default function Files() {
                 </option>
               ))}
             </select>
-            <label className="flex items-center gap-1 text-sm">
+            <label className="flex items-center gap-1.5 text-sm text-slate-600 dark:text-slate-300">
               <input
                 type="checkbox"
                 checked={favoritesOnly}
                 onChange={(e) => setFavoritesOnly(e.target.checked)}
+                className="h-4 w-4 accent-indigo-600"
               />
-              <Heart size={14} /> Favorites
+              <Heart size={14} aria-hidden /> Favorites
             </label>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value)}
               aria-label="Sort files"
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+              className={inputCls}
             >
               <option value="created_at">Newest</option>
               <option value="original_filename">Name</option>
               <option value="size_bytes">Size</option>
             </select>
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-            >
-              Search
-            </button>
-            {searching && (
-              <button
-                type="button"
-                onClick={() => {
-                  setQ("");
-                  setCategory("");
-                  setTag("");
-                  setMime("");
-                  setFavoritesOnly(false);
-                }}
-                className="text-sm underline"
-              >
-                Clear
-              </button>
-            )}
+            <div className="col-span-2 flex items-center gap-2 lg:col-span-1">
+              <Button type="submit" variant="primary">Search</Button>
+              {searching && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQ("");
+                    setCategory("");
+                    setTag("");
+                    setMime("");
+                    setFavoritesOnly(false);
+                  }}
+                  className="text-sm text-slate-500 underline"
+                >
+                  Clear
+                </button>
+              )}
+            </div>
           </form>
 
           {!searching && (
-            <section aria-label="Folders" className="flex flex-col gap-2">
+            <section aria-label="Folders" className="flex flex-col gap-2.5">
               <div className="flex items-center gap-2">
-                <h2 className="font-semibold">Folders</h2>
+                <h2 className="text-[15px] font-bold tracking-tight">Folders · {folders.length}</h2>
                 <form
-                  className="ml-auto flex gap-1"
+                  className="ml-auto flex gap-1.5"
                   onSubmit={(e) => {
                     e.preventDefault();
                     if (!newFolderName.trim()) return;
@@ -784,30 +855,26 @@ export default function Files() {
                     onChange={(e) => setNewFolderName(e.target.value)}
                     placeholder="New folder name"
                     aria-label="New folder name"
-                    className="w-40 rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                    className={`${inputCls} w-36 sm:w-44`}
                   />
-                  <button
-                    type="submit"
-                    disabled={busy}
-                    className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    Create
-                  </button>
+                  <Button type="submit" disabled={busy}>Create</Button>
                 </form>
               </div>
               {folders.length === 0 ? (
-                <p className="text-sm text-slate-500">No folders here yet.</p>
+                <EmptyState title="No folders here yet" hint="Create one to start organizing." />
               ) : (
                 <ul className="grid gap-2 sm:grid-cols-2">
                   {folders.map((f) => (
                     <li
                       key={f.id}
-                      className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 dark:border-slate-800"
+                      className={`${cardCls} group flex items-center gap-2.5 p-3 transition-shadow hover:shadow-pop`}
                     >
-                      <FolderIcon size={18} className="shrink-0 text-slate-400" />
+                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-600 dark:bg-amber-950 dark:text-amber-400" aria-hidden>
+                        <FolderIcon size={18} />
+                      </span>
                       {renamingId === f.id ? (
                         <form
-                          className="flex flex-1 gap-1"
+                          className="flex min-w-0 flex-1 gap-1"
                           onSubmit={(e) => {
                             e.preventDefault();
                             updateFolder(f.id, { name: renameValue })
@@ -823,11 +890,9 @@ export default function Files() {
                             onChange={(e) => setRenameValue(e.target.value)}
                             autoFocus
                             aria-label="Folder name"
-                            className="w-full rounded border border-slate-300 bg-transparent px-1 text-sm dark:border-slate-600"
+                            className={`${inputCls} w-full px-1.5 py-1`}
                           />
-                          <button type="submit" className="text-sm underline">
-                            Save
-                          </button>
+                          <Button type="submit" variant="primary" className="!px-2.5 !py-1 !text-xs">Save</Button>
                         </form>
                       ) : (
                         <button
@@ -835,49 +900,54 @@ export default function Files() {
                             setCurrentFolderId(f.id);
                             setSelected(null);
                           }}
-                          className="flex-1 truncate text-left text-sm font-medium hover:underline"
+                          className="min-w-0 flex-1 truncate text-left text-sm font-semibold hover:text-indigo-600 dark:hover:text-indigo-300"
+                          title={`Open ${f.name}`}
                         >
                           {f.name}
                         </button>
                       )}
-                      <FolderMoveSelect
-                        folders={allFolders}
-                        value={f.parent_id}
-                        excludeId={f.id}
-                        onChange={(id) =>
-                          updateFolder(f.id, {}, id === null)
-                            .then(() => reload())
-                            .catch((err) => setError(errMsg(err)))
-                        }
-                      />
-                      <button
-                        onClick={() => {
-                          setRenamingId(f.id);
-                          setRenameValue(f.name);
-                        }}
-                        className="text-xs underline"
-                        aria-label={`Rename ${f.name}`}
-                      >
-                        Rename
-                      </button>
-                      <button
-                        onClick={() =>
-                          trashFolder(f.id)
-                            .then(() => reload())
-                            .catch((err) => setError(errMsg(err)))
-                        }
-                        className="text-xs underline"
-                        aria-label={`Trash ${f.name}`}
-                      >
-                        Trash
-                      </button>
-                      <button
-                        onClick={() => setConfirmFolderDelete(f)}
-                        className="text-xs text-red-600 underline"
-                        aria-label={`Delete ${f.name} forever`}
-                      >
-                        Delete
-                      </button>
+                      <span className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+                        <span title="Move to folder">
+                          <FolderMoveSelect
+                            folders={allFolders}
+                            value={f.parent_id}
+                            excludeId={f.id}
+                            onChange={(id) =>
+                              updateFolder(f.id, {}, id === null)
+                                .then(() => reload())
+                                .catch((err) => setError(errMsg(err)))
+                            }
+                          />
+                        </span>
+                        <button
+                          onClick={() => {
+                            setRenamingId(f.id);
+                            setRenameValue(f.name);
+                          }}
+                          className="rounded-md px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+                          aria-label={`Rename ${f.name}`}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          onClick={() =>
+                            trashFolder(f.id)
+                              .then(() => reload())
+                              .catch((err) => setError(errMsg(err)))
+                          }
+                          className="rounded-md px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800"
+                          aria-label={`Trash ${f.name}`}
+                        >
+                          Trash
+                        </button>
+                        <button
+                          onClick={() => setConfirmFolderDelete(f)}
+                          className="rounded-md px-1.5 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
+                          aria-label={`Delete ${f.name} forever`}
+                        >
+                          Delete
+                        </button>
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -885,79 +955,129 @@ export default function Files() {
             </section>
           )}
 
-          <section aria-label="Files" className="flex flex-col gap-2">
-            <h2 className="font-semibold">
-              {searching ? `Results (${files.length})` : currentFolderId === null ? "Unfiled files" : "Files in this folder"}
+          <section aria-label="Files" className="flex flex-col gap-2.5">
+            <h2 className="text-[15px] font-bold tracking-tight">
+              {searching ? `Results · ${files.length}` : currentFolderId === null ? "Unfiled files" : `Files in this folder · ${files.length}`}
             </h2>
             {files.length === 0 ? (
-              <p className="text-sm text-slate-500">
-                {searching ? "No files match these filters." : "No files here yet — upload one below."}
-              </p>
+              <EmptyState
+                title={searching ? "No files match these filters" : "No files here yet"}
+                hint={searching ? "Try different keywords or clear the filters." : "Upload your first file below — or drag and drop it anywhere onto the upload card."}
+              />
+            ) : layout === "grid" && !searching ? (
+              <ul className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">
+                {files.map((f) => (
+                  <li key={f.id}>
+                    <button
+                      onClick={() => setSelected(selected?.id === f.id ? null : f)}
+                      aria-expanded={selected?.id === f.id}
+                      className={`flex w-full flex-col items-center gap-1.5 rounded-xl border p-4 text-center transition-shadow hover:shadow-pop ${
+                        selected?.id === f.id
+                          ? "border-indigo-400 bg-indigo-50/50 dark:border-indigo-500 dark:bg-indigo-950/40"
+                          : "border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900"
+                      }`}
+                    >
+                      <FileTypeIcon filename={f.original_filename} size={30} />
+                      <span className="w-full truncate text-[13px] font-medium" title={f.original_filename}>
+                        {f.original_filename}
+                      </span>
+                      <span className="fm-num text-xs text-slate-400">{formatBytes(f.size_bytes)}</span>
+                      <span className="flex flex-wrap justify-center gap-1">
+                        {f.is_favorite && <Star size={12} className="fill-amber-400 text-amber-400" aria-label="Favorite" />}
+                        {f.goal_count > 0 && <Badge tone="blue">{f.goal_count} linked</Badge>}
+                        {f.duplicate_count > 0 && <Badge tone="amber">dup ×{f.duplicate_count}</Badge>}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             ) : (
-              <ul className="flex flex-col gap-1">
+              <ul className={`${cardCls} divide-y divide-slate-100 overflow-hidden !p-0 dark:divide-slate-800`}>
                 {files.map((f) => (
                   <li
                     key={f.id}
-                    className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm dark:border-slate-800 ${
-                      selected?.id === f.id ? "border-slate-400 bg-slate-50 dark:bg-slate-900" : "border-slate-200"
+                    className={`flex flex-wrap items-center gap-x-2.5 gap-y-1 px-3.5 py-2.5 text-sm transition-colors ${
+                      selected?.id === f.id ? "bg-indigo-50/60 dark:bg-indigo-950/40" : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
                     }`}
                   >
-                    <FileIcon size={16} className="shrink-0 text-slate-400" />
+                    <FileTypeIcon filename={f.original_filename} />
                     <button
                       onClick={() => setSelected(selected?.id === f.id ? null : f)}
-                      className="min-w-0 flex-1 truncate text-left font-medium hover:underline"
+                      className="min-w-0 flex-1 truncate text-left font-medium hover:text-indigo-600 dark:hover:text-indigo-300"
                       aria-expanded={selected?.id === f.id}
+                      title={f.original_filename}
                     >
                       {f.original_filename}
                     </button>
-                    {f.is_favorite && <Star size={14} className="fill-amber-400 text-amber-400" aria-label="Favorite" />}
+                    {f.is_favorite && <Star size={14} className="shrink-0 fill-amber-400 text-amber-400" aria-label="Favorite" />}
                     {f.duplicate_count > 0 && (
-                      <span className="rounded bg-amber-100 px-1.5 text-xs text-amber-800">
-                        {f.duplicate_count} duplicate{f.duplicate_count === 1 ? "" : "s"}
-                      </span>
+                      <Badge tone="amber">{f.duplicate_count} duplicate{f.duplicate_count === 1 ? "" : "s"}</Badge>
                     )}
                     {f.goal_count > 0 && (
-                      <span className="rounded bg-blue-100 px-1.5 text-xs text-blue-800">
-                        {f.goal_count} goal link{f.goal_count === 1 ? "" : "s"}
-                      </span>
+                      <Badge tone="blue">{f.goal_count} goal link{f.goal_count === 1 ? "" : "s"}</Badge>
                     )}
-                    <span className="text-xs text-slate-500">{f.category_name ?? "Uncategorized"}</span>
-                    <span className="text-xs text-slate-500">{formatBytes(f.size_bytes)}</span>
+                    <Badge tone="slate">{f.category_name ?? "Uncategorized"}</Badge>
+                    <span className="fm-num hidden text-xs text-slate-400 sm:inline">{formatBytes(f.size_bytes)}</span>
                     {searching && f.folder_id !== null && (
-                      <span className="text-xs text-slate-500">in {folderNameById.get(f.folder_id) ?? "…"}</span>
+                      <span className="hidden text-xs text-slate-400 md:inline">in {folderNameById.get(f.folder_id) ?? "…"}</span>
                     )}
-                    <button onClick={() => void openPreview(f)} className="flex items-center gap-1 text-xs underline" aria-label={`Preview ${f.original_filename}`}>
-                      <Eye size={13} /> Preview
-                    </button>
-                    <button onClick={() => void download(f)} className="flex items-center gap-1 text-xs underline" aria-label={`Download ${f.original_filename}`}>
-                      <Download size={13} /> Download
-                    </button>
+                    <span className="ml-auto flex shrink-0 items-center gap-1">
+                      <button onClick={() => void openPreview(f)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800" aria-label={`Preview ${f.original_filename}`}>
+                        <Eye size={13} /> Preview
+                      </button>
+                      <button onClick={() => void download(f)} className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-800 dark:hover:bg-slate-800" aria-label={`Download ${f.original_filename}`}>
+                        <Download size={13} /> Download
+                      </button>
+                    </span>
                   </li>
                 ))}
               </ul>
             )}
           </section>
 
-          <section aria-label="Upload" className="rounded-xl border border-slate-200 p-4 dark:border-slate-800">
-            <h2 className="flex items-center gap-2 font-semibold">
-              <Upload size={16} /> Upload a file
+          <section aria-label="Upload" className={cardCls + " p-4 md:p-5"}>
+            <h2 className="flex items-center gap-2 text-[15px] font-bold tracking-tight">
+              <Upload size={16} aria-hidden /> Upload a file
               {currentFolderId !== null && (
-                <span className="text-sm font-normal text-slate-500">→ {folderNameById.get(currentFolderId)}</span>
+                <span className="text-sm font-normal text-slate-400">→ {folderNameById.get(currentFolderId)}</span>
               )}
             </h2>
-            <form onSubmit={(e) => void onUpload(e)} className="mt-2 flex flex-wrap items-end gap-2">
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                const picked = e.dataTransfer.files?.[0];
+                if (picked) void doUpload(picked);
+              }}
+              className={`mt-3 rounded-xl border-2 border-dashed p-4 text-center transition-colors sm:p-6 ${
+                dragOver
+                  ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-950/40"
+                  : "border-slate-200 dark:border-slate-700"
+              }`}
+            >
+              <p className="text-sm font-medium">
+                {busy ? "Uploading…" : dragOver ? "Drop to upload" : "Drag and drop a file here"}
+              </p>
+              <p className="mt-0.5 text-xs text-slate-400">or choose a file below — PDF, docs, images, code, archives</p>
+            </div>
+            <form onSubmit={(e) => void onUpload(e)} className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-6 lg:items-end">
               <input
                 ref={fileInput}
                 type="file"
                 aria-label="Choose file"
-                className="text-sm"
+                className="col-span-2 text-sm file:mr-2 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-1.5 file:text-sm file:font-medium hover:file:bg-slate-50 dark:file:border-slate-700 dark:file:bg-slate-900 lg:col-span-2"
               />
-              <label className="flex flex-col gap-1 text-sm">
-                Category (optional — otherwise suggested from the file type)
+              <label className="flex flex-col gap-1 text-xs text-slate-500">
+                Category
                 <select
                   value={uploadCategory}
                   onChange={(e) => setUploadCategory(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
+                  className={inputCls}
                 >
                   <option value="">Auto-suggest</option>
                   {categories.map((c) => (
@@ -967,35 +1087,32 @@ export default function Files() {
                   ))}
                 </select>
               </label>
-              <label className="flex flex-col gap-1 text-sm">
+              <label className="flex flex-col gap-1 text-xs text-slate-500">
                 Description
                 <input
                   value={uploadDescription}
                   onChange={(e) => setUploadDescription(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
+                  className={inputCls}
                 />
               </label>
-              <label className="flex flex-col gap-1 text-sm">
-                Tags (comma separated)
+              <label className="flex flex-col gap-1 text-xs text-slate-500">
+                Tags
                 <input
                   value={uploadTags}
                   onChange={(e) => setUploadTags(e.target.value)}
-                  className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
+                  placeholder="comma separated"
+                  className={inputCls}
                 />
               </label>
-              <button
-                type="submit"
-                disabled={busy}
-                className="rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-slate-100 dark:text-slate-900"
-              >
+              <Button type="submit" variant="primary" disabled={busy}>
                 {busy ? "Uploading…" : "Upload"}
-              </button>
+              </Button>
             </form>
             {lastUpload && (
-              <p className="mt-2 text-sm text-slate-500">
-                Last upload filed under <strong>{lastUpload.suggested_category}</strong> (
+              <p className="mt-2 rounded-lg bg-indigo-50 p-2.5 text-[13px] text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200">
+                Filed under <strong>{lastUpload.suggested_category}</strong> (
                 {lastUpload.suggestion_source === "rule" ? "rule-based suggestion" : "your choice"}). Correct it
-                in the file details panel if needed.
+                in the details panel if needed.
               </p>
             )}
           </section>
@@ -1009,10 +1126,13 @@ export default function Files() {
             stored bytes; deleting one never affects the others.
           </p>
           {duplicates.length === 0 ? (
-            <p className="text-sm text-slate-500">No exact duplicates found.</p>
+            <EmptyState
+              title="No exact duplicates found"
+              hint="Files with byte-identical content (same SHA-256) will be grouped here."
+            />
           ) : (
             duplicates.map((g) => (
-              <div key={g.sha256} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <div key={g.sha256} className={`${cardCls} p-3.5`}>
                 <p className="font-mono text-xs text-slate-500">
                   {g.sha256.slice(0, 16)}… · {formatBytes(g.size_bytes)} · {g.files.length} copies
                 </p>
@@ -1051,13 +1171,13 @@ export default function Files() {
             text line by line.
           </p>
           {versionGroups.length === 0 ? (
-            <p className="text-sm text-slate-500">
-              No version groups detected. Try names like <code>report-v1.txt</code> and{" "}
-              <code>report-v2.txt</code> in the same folder.
-            </p>
+            <EmptyState
+              title="No version groups detected"
+              hint="Files like report-v1.txt and report-v2.txt in the same folder are grouped here automatically."
+            />
           ) : (
             versionGroups.map((g) => (
-              <div key={g.key} className="rounded-xl border border-slate-200 p-3 dark:border-slate-800">
+              <div key={g.key} className={`${cardCls} p-3.5`}>
                 <p className="text-sm font-semibold">
                   {g.stem}
                   <span className="ml-2 text-xs font-normal text-slate-500">
@@ -1120,9 +1240,9 @@ export default function Files() {
           <p className="text-sm text-slate-500">
             Trashed items are hidden everywhere else. Restore them, or delete forever (this cannot be undone).
           </p>
-          <h2 className="font-semibold">Trashed folders ({trashFolders.length})</h2>
+          <h2 className="text-[15px] font-bold tracking-tight">Trashed folders ({trashFolders.length})</h2>
           {trashFolders.length === 0 ? (
-            <p className="text-sm text-slate-500">No trashed folders.</p>
+            <EmptyState title="No trashed folders" />
           ) : (
             <ul className="flex flex-col gap-1">
               {trashFolders.map((f) => (
@@ -1142,9 +1262,9 @@ export default function Files() {
               ))}
             </ul>
           )}
-          <h2 className="font-semibold">Trashed files ({trashFiles.length})</h2>
+          <h2 className="text-[15px] font-bold tracking-tight">Trashed files ({trashFiles.length})</h2>
           {trashFiles.length === 0 ? (
-            <p className="text-sm text-slate-500">No trashed files.</p>
+            <EmptyState title="No trashed files" />
           ) : (
             <ul className="flex flex-col gap-1">
               {trashFiles.map((f) => (
@@ -1309,13 +1429,13 @@ function PreviewModal({
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl bg-white p-4 dark:bg-slate-900"
+        className="fm-pop flex max-h-[85vh] w-full max-w-3xl flex-col rounded-xl border border-slate-200 bg-white p-4 shadow-pop dark:border-slate-700 dark:bg-slate-900"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-2 flex items-center justify-between gap-2">
-          <h2 className="truncate font-bold">{file.original_filename}</h2>
-          <button onClick={onClose} className="text-sm underline" aria-label="Close preview">
-            Close
+          <h2 className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-tight">{file.original_filename}</h2>
+          <button onClick={onClose} className="shrink-0 rounded-md px-1.5 py-0.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800" aria-label="Close preview">
+            ✕
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-auto rounded border border-slate-200 dark:border-slate-700">
