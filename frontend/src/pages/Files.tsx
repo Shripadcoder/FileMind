@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Download,
@@ -19,24 +19,39 @@ import {
   deleteFile,
   deleteFolder,
   downloadBlob,
+  fileGoals,
   formatBytes,
   formatDate,
+  getFile,
   getFolder,
+  getGoalWithLinks,
+  linkFileToGoal,
   listAllFolders,
   listCategories,
   listDuplicates,
   listFiles,
   listFolders,
+  listGoals,
   previewBlob,
   restoreFile,
   restoreFolder,
   trashFile,
   trashFolder,
+  unlinkFileFromGoal,
   updateFile,
   updateFolder,
   uploadFile,
 } from "../lib/api";
-import type { Category, DuplicateGroup, FileItem, Folder, UploadResult } from "../lib/api";
+import type {
+  Category,
+  DuplicateGroup,
+  FileItem,
+  Folder,
+  GoalItem,
+  GoalLink,
+  TaskItem,
+  UploadResult,
+} from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 type View = "browse" | "duplicates" | "trash";
@@ -280,6 +295,8 @@ function FileDetail({
         </button>
       </div>
 
+      <LinkedGoals file={file} onChanged={onChanged} notify={notify} />
+
       <form
         className="mt-4 flex flex-col gap-2"
         onSubmit={(e) => {
@@ -363,6 +380,7 @@ function FileDetail({
 
 export default function Files() {
   const { user, loading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [view, setView] = useState<View>("browse");
   const [currentFolderId, setCurrentFolderId] = useState<number | null>(null);
   const [path, setPath] = useState<Folder[]>([]);
@@ -465,6 +483,23 @@ export default function Files() {
       .catch((e) => setError(errMsg(e)))
       .finally(() => setBusy(false));
   }, [user, reload]);
+
+  // Deep link: /files?open=<id> (used by goal links and dashboard entries).
+  useEffect(() => {
+    if (!user) return;
+    const openId = searchParams.get("open");
+    if (openId && !selected) {
+      const id = Number(openId);
+      if (Number.isInteger(id)) {
+        getFile(id)
+          .then(setSelected)
+          .catch((e) => setError(errMsg(e)));
+        setSearchParams({}, { replace: true });
+      }
+    }
+    // Intentionally run once per login; selection changes must not re-trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
 
   const folderNameById = useMemo(() => new Map(allFolders.map((f) => [f.id, f.name])), [allFolders]);
 
@@ -857,6 +892,11 @@ export default function Files() {
                         {f.duplicate_count} duplicate{f.duplicate_count === 1 ? "" : "s"}
                       </span>
                     )}
+                    {f.goal_count > 0 && (
+                      <span className="rounded bg-blue-100 px-1.5 text-xs text-blue-800">
+                        {f.goal_count} goal link{f.goal_count === 1 ? "" : "s"}
+                      </span>
+                    )}
                     <span className="text-xs text-slate-500">{f.category_name ?? "Uncategorized"}</span>
                     <span className="text-xs text-slate-500">{formatBytes(f.size_bytes)}</span>
                     {searching && f.folder_id !== null && (
@@ -1135,4 +1175,163 @@ function PreviewModal({
       </div>
     </div>
   );
+}
+
+function LinkedGoals({
+  file,
+  onChanged,
+  notify,
+}: {
+  file: FileItem;
+  onChanged: (f: FileItem | null) => void;
+  notify: (msg: string | null, isError?: boolean) => void;
+}) {
+  const [links, setLinks] = useState<GoalLink[]>([]);
+  const [goals, setGoals] = useState<GoalItem[]>([]);
+  const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [pickGoal, setPickGoal] = useState("");
+  const [pickTask, setPickTask] = useState("");
+  const [note, setNote] = useState("");
+
+  const reloadLinks = useCallback(async () => {
+    try {
+      const [ls, gs] = await Promise.all([fileGoals(file.id), listGoals({ limit: 200 })]);
+      setLinks(ls);
+      setGoals(gs);
+    } catch (e) {
+      notify(errMsg(e), true);
+    }
+  }, [file.id, notify]);
+
+  useEffect(() => {
+    void reloadLinks();
+  }, [reloadLinks]);
+
+  async function pickGoalTasks(goalId: string) {
+    setPickGoal(goalId);
+    setPickTask("");
+    if (!goalId) {
+      setTasks([]);
+      return;
+    }
+    try {
+      setTasks((await getGoalWithLinks(Number(goalId))).tasks);
+    } catch (e) {
+      notify(errMsg(e), true);
+    }
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <h3 className="text-sm font-semibold">Linked goals ({links.length})</h3>
+      {links.length === 0 ? (
+        <p className="mt-1 text-xs text-slate-500">
+          Not attached to any goal yet. Link it so it shows up as a related resource.
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1">
+          {links.map((l) => (
+            <li
+              key={`${l.goal_id}-${l.task_id ?? "goal"}`}
+              className="flex items-center gap-2 text-sm"
+            >
+              <span className="flex-1 truncate font-medium">{l.goal_title}</span>
+              {l.task_title && (
+                <span className="rounded bg-blue-100 px-1.5 text-xs text-blue-800">
+                  {l.task_title}
+                </span>
+              )}
+              <Link to={`/goals?open=${l.goal_id}`} className="text-xs underline">
+                Open
+              </Link>
+              <button
+                onClick={() =>
+                  unlinkFileFromGoal(l.goal_id, file.id, l.task_id)
+                    .then(() => reloadLinks())
+                    .then(() => getFileRefreshed(file.id, onChanged))
+                    .catch((err) => notify(errMsg(err), true))
+                }
+                className="text-xs text-red-600 underline"
+                aria-label={`Unlink from ${l.goal_title}`}
+              >
+                Unlink
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <form
+        className="mt-2 flex flex-wrap items-center gap-1"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!pickGoal) return;
+          linkFileToGoal(Number(pickGoal), {
+            file_id: file.id,
+            task_id: pickTask ? Number(pickTask) : null,
+            note: note.trim(),
+          })
+            .then(() => {
+              setPickGoal("");
+              setPickTask("");
+              setTasks([]);
+              setNote("");
+              notify("Goal linked.");
+              return reloadLinks();
+            })
+            .then(() => getFileRefreshed(file.id, onChanged))
+            .catch((err) => notify(errMsg(err), true));
+        }}
+      >
+        <select
+          value={pickGoal}
+          onChange={(e) => void pickGoalTasks(e.target.value)}
+          aria-label="Goal to link"
+          className="max-w-40 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+        >
+          <option value="">Choose a goal…</option>
+          {goals.map((g) => (
+            <option key={g.id} value={g.id}>
+              {g.title}
+            </option>
+          ))}
+        </select>
+        {tasks.length > 0 && (
+          <select
+            value={pickTask}
+            onChange={(e) => setPickTask(e.target.value)}
+            aria-label="Attach to a specific task or the whole goal"
+            className="max-w-36 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+          >
+            <option value="">Whole goal</option>
+            {tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+        )}
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="Note"
+          aria-label="Link note"
+          className="w-24 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+        />
+        <button type="submit" className="text-sm underline">
+          Link
+        </button>
+      </form>
+    </div>
+  );
+}
+
+async function getFileRefreshed(
+  id: number,
+  onChanged: (f: FileItem | null) => void,
+): Promise<void> {
+  try {
+    onChanged(await getFile(id));
+  } catch {
+    /* file may be gone; selection refresh already handled by callers */
+  }
 }

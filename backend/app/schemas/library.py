@@ -89,6 +89,7 @@ class FileOut(BaseModel):
     tags: list[str]
     is_trashed: bool
     duplicate_count: int = 0
+    goal_count: int = 0
     created_at: datetime
     updated_at: datetime
 

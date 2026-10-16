@@ -326,7 +326,9 @@ export default function Dashboard() {
             <ul className="flex flex-col gap-1 text-sm">
               {data.recent_files.map((f) => (
                 <li key={f.id} className="flex items-center gap-2">
-                  <span className="flex-1 truncate">{f.original_filename}</span>
+                  <Link to={`/files?open=${f.id}`} className="flex-1 truncate hover:underline">
+                    {f.original_filename}
+                  </Link>
                   <span className="text-xs text-slate-500">{f.category_name ?? "Uncategorized"}</span>
                 </li>
               ))}
@@ -345,7 +347,16 @@ export default function Dashboard() {
             <ul className="flex flex-col gap-1 text-sm">
               {data.recent_activities.slice(0, 6).map((a) => (
                 <li key={a.id} className="flex items-center gap-2">
-                  <span className="flex-1 truncate">{a.title}</span>
+                  {a.goal_id ? (
+                    <Link
+                      to={`/goals?open=${a.goal_id}`}
+                      className="flex-1 truncate hover:underline"
+                    >
+                      {a.title}
+                    </Link>
+                  ) : (
+                    <span className="flex-1 truncate">{a.title}</span>
+                  )}
                   <span className="text-xs text-slate-500">
                     {ACTIVITY_TYPE_LABELS[a.activity_type] ?? a.activity_type}
                   </span>

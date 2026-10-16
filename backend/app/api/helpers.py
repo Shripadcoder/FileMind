@@ -57,7 +57,23 @@ def duplicate_counts(db: Session, user: User) -> dict[str, int]:
     return {sha: count for sha, count in rows}
 
 
-def file_to_out(file: File, counts: dict[str, int] | None = None) -> FileOut:
+def link_counts(db: Session, user: User) -> dict[int, int]:
+    """Map file_id -> number of goal/task links pointing at the user's files."""
+    from app.models.links import GoalFile
+
+    rows = db.execute(
+        select(GoalFile.file_id, func.count(GoalFile.id))
+        .where(GoalFile.owner_id == user.id)
+        .group_by(GoalFile.file_id)
+    ).all()
+    return {file_id: count for file_id, count in rows}
+
+
+def file_to_out(
+    file: File,
+    counts: dict[str, int] | None = None,
+    links: dict[int, int] | None = None,
+) -> FileOut:
     return FileOut(
         id=file.id,
         original_filename=file.original_filename,
@@ -72,6 +88,7 @@ def file_to_out(file: File, counts: dict[str, int] | None = None) -> FileOut:
         tags=sorted(tag.name for tag in file.tags),
         is_trashed=file.trashed_at is not None,
         duplicate_count=(counts.get(file.sha256, 1) - 1) if counts else 0,
+        goal_count=links.get(file.id, 0) if links else 0,
         created_at=file.created_at,
         updated_at=file.updated_at,
     )

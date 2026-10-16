@@ -12,6 +12,7 @@ from app.api.dashboard import router as dashboard_router
 from app.api.files import router as files_router
 from app.api.folders import router as folders_router
 from app.api.goals import router as goals_router
+from app.api.links import router as links_router
 from app.api.health import router as health_router
 from app.api.taxonomy import router as taxonomy_router
 from app.core.config import settings
@@ -55,6 +56,7 @@ def create_app() -> FastAPI:
     app.include_router(folders_router, prefix="/api")
     app.include_router(files_router, prefix="/api")
     app.include_router(goals_router, prefix="/api")
+    app.include_router(links_router, prefix="/api")
     app.include_router(activities_router, prefix="/api")
     app.include_router(dashboard_router, prefix="/api")
     app.include_router(taxonomy_router, prefix="/api")

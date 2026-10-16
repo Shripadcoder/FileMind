@@ -6,9 +6,11 @@ from sqlalchemy.orm import Session
 
 from app.api.activities import activity_to_out
 from app.api.deps import get_current_user
+from app.api.helpers import duplicate_counts, file_to_out, link_counts
 from app.core.time import utcnow
 from app.db.session import get_db
 from app.models.activity import Activity
+from app.models.file import File
 from app.models.goals import (
     DEFAULT_PROGRESS_SOURCE,
     DEFAULT_UNITS,
@@ -16,6 +18,8 @@ from app.models.goals import (
     Milestone,
     Task,
 )
+from app.models.links import GoalFile
+from app.models.taxonomy import Category
 from app.models.user import User
 from app.schemas.activities import ActivityOut
 from app.schemas.goals import (
@@ -24,6 +28,7 @@ from app.schemas.goals import (
     GoalOut,
     GoalTypeInfo,
     GoalUpdate,
+    LinkedFileOut,
     MilestoneCreate,
     MilestoneOut,
     MilestoneUpdate,
@@ -34,6 +39,7 @@ from app.schemas.goals import (
     validate_goal_enums,
     validate_progress_source,
 )
+from app.schemas.library import FileOut
 from app.services.activity_log import log_activity
 from app.services.progress import compute_progress, goal_health
 
@@ -101,6 +107,7 @@ def serialize_goal(goal: Goal, today: date, detail: bool = False) -> GoalOut | G
         progress=progress, health=health,
         task_count=len(goal.tasks), tasks_done=tasks_done,
         milestone_count=len(goal.milestones), milestones_done=milestones_done,
+        file_count=len(goal.file_links),
     )
     if detail:
         return GoalDetail(
@@ -109,6 +116,60 @@ def serialize_goal(goal: Goal, today: date, detail: bool = False) -> GoalOut | G
             milestones=[serialize_milestone(m) for m in goal.milestones],
         )
     return GoalOut(**base)
+
+
+def serialize_goal_detail(db: Session, user: User, goal: Goal, today: date) -> GoalDetail:
+    """Full detail view: children plus linked files and category-matched
+    suggestions (rule-based, labeled — never presented as AI inference)."""
+    base = serialize_goal(goal, today, detail=True)
+    assert isinstance(base, GoalDetail)
+    counts, linkmap = duplicate_counts(db, user), link_counts(db, user)
+    links = list(
+        db.execute(
+            select(GoalFile)
+            .where(GoalFile.goal_id == goal.id, GoalFile.owner_id == user.id)
+            .order_by(GoalFile.created_at)
+        ).scalars()
+    )
+    linked = [
+        LinkedFileOut(
+            file=file_to_out(link.file, counts, linkmap),
+            task_id=link.task_id,
+            task_title=link.task.title if link.task is not None else None,
+            note=link.note or "",
+            created_at=link.created_at,
+        )
+        for link in links
+    ]
+    base.linked_files = linked
+    base.suggested_files = suggest_files_for_goal(db, user, goal, {link.file_id for link in links})
+    return base
+
+
+def suggest_files_for_goal(
+    db: Session, user: User, goal: Goal, exclude_ids: set[int], limit: int = 5
+) -> list[FileOut]:
+    """Files whose category name matches the goal's category, not yet linked.
+    A transparent name match (source 'category-match'), not semantic analysis."""
+    if not (goal.category or "").strip():
+        return []
+    query = (
+        select(File)
+        .join(Category, File.category_id == Category.id)
+        .where(
+            File.owner_id == user.id,
+            File.trashed_at.is_(None),
+            Category.name == goal.category.strip(),
+            or_(Category.is_system.is_(True), Category.owner_id == user.id),
+        )
+        .order_by(File.created_at.desc())
+        .limit(limit)
+    )
+    if exclude_ids:
+        query = query.where(File.id.not_in(exclude_ids))
+    rows = db.execute(query).scalars()
+    counts, linkmap = duplicate_counts(db, user), link_counts(db, user)
+    return [file_to_out(f, counts, linkmap) for f in rows]
 
 
 def serialize_task(task: Task) -> TaskOut:
@@ -173,9 +234,7 @@ def create_goal(
     )
     db.commit()
     db.refresh(goal)
-    result = serialize_goal(goal, date.today(), detail=True)
-    assert isinstance(result, GoalDetail)
-    return result
+    return serialize_goal_detail(db, current, goal, date.today())
 
 
 @router.get("/goals", response_model=list[GoalOut])
@@ -229,9 +288,7 @@ def get_goal(
     current: User = Depends(get_current_user),
 ):
     goal = get_owned_goal(db, current, goal_id)
-    result = serialize_goal(goal, date.today(), detail=True)
-    assert isinstance(result, GoalDetail)
-    return result
+    return serialize_goal_detail(db, current, goal, date.today())
 
 
 @router.patch("/goals/{goal_id}", response_model=GoalDetail)
@@ -284,9 +341,7 @@ def update_goal(
                      details={"old_value": old_value, "new_value": patch.current_value})
     db.commit()
     db.refresh(goal)
-    result = serialize_goal(goal, date.today(), detail=True)
-    assert isinstance(result, GoalDetail)
-    return result
+    return serialize_goal_detail(db, current, goal, date.today())
 
 
 @router.delete("/goals/{goal_id}")
@@ -301,6 +356,7 @@ def delete_goal(
     db.query(Activity).filter(Activity.goal_id == goal.id).update(
         {Activity.goal_id: None}, synchronize_session=False
     )
+    db.query(GoalFile).filter(GoalFile.goal_id == goal.id).delete(synchronize_session=False)
     db.delete(goal)  # tasks/milestones cascade; activities survive via the update above
     db.commit()
     return {"id": goal_id, "deleted": True}
@@ -374,6 +430,7 @@ def delete_task(
     current: User = Depends(get_current_user),
 ):
     task = get_owned_task(db, current, task_id)
+    db.query(GoalFile).filter(GoalFile.task_id == task.id).delete(synchronize_session=False)
     db.delete(task)
     db.commit()
     return {"id": task_id, "deleted": True}

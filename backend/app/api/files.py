@@ -12,11 +12,13 @@ from app.api.helpers import (
     file_to_out,
     get_owned_file,
     get_owned_folder,
+    link_counts,
 )
 from app.core.config import settings
 from app.core.time import utcnow
 from app.services.activity_log import log_activity
 from app.models.file import File, file_tags
+from app.models.links import GoalFile
 from app.models.taxonomy import Category, Tag
 from app.models.user import User
 from app.db.session import get_db
@@ -157,7 +159,7 @@ def upload_file(
     )
     db.commit()
     db.refresh(record)
-    out = file_to_out(record, duplicate_counts(db, current))
+    out = file_to_out(record, duplicate_counts(db, current), link_counts(db, current))
     return FileUploadOut(
         **out.model_dump(), suggested_category=suggested_name, suggestion_source=suggestion_source
     )
@@ -239,7 +241,8 @@ def list_files(
     query = query.order_by(sort_col.asc() if order == "asc" else sort_col.desc())
     rows = db.execute(query.limit(limit).offset(offset)).scalars().all()
     counts = duplicate_counts(db, current)
-    return [file_to_out(f, counts) for f in rows]
+    links = link_counts(db, current)
+    return [file_to_out(f, counts, links) for f in rows]
 
 
 @router.get("/duplicates", response_model=list[DuplicateGroup])
@@ -284,7 +287,7 @@ def get_file(
     current: User = Depends(get_current_user),
 ):
     record = get_owned_file(db, current, file_id)
-    return file_to_out(record, duplicate_counts(db, current))
+    return file_to_out(record, duplicate_counts(db, current), link_counts(db, current))
 
 
 @router.patch("/{file_id}", response_model=FileOut)
@@ -329,7 +332,7 @@ def update_file(
         record.tags = _resolve_tags(db, current, body.tags)
     db.commit()
     db.refresh(record)
-    return file_to_out(record, duplicate_counts(db, current))
+    return file_to_out(record, duplicate_counts(db, current), link_counts(db, current))
 
 
 @router.post("/{file_id}/trash", response_model=FileOut)
@@ -342,7 +345,7 @@ def trash_file(
     record.trashed_at = utcnow()
     db.commit()
     db.refresh(record)
-    return file_to_out(record)
+    return file_to_out(record, None, link_counts(db, current))
 
 
 @router.post("/{file_id}/restore", response_model=FileOut)
@@ -355,7 +358,7 @@ def restore_file(
     record.trashed_at = None
     db.commit()
     db.refresh(record)
-    return file_to_out(record, duplicate_counts(db, current))
+    return file_to_out(record, duplicate_counts(db, current), link_counts(db, current))
 
 
 @router.delete("/{file_id}")
@@ -372,9 +375,10 @@ def delete_file(
             detail="Permanent deletion requires ?permanent=true (trash first to hide it)",
         )
     stored_name, owner_id = record.stored_name, record.owner_id
-    # Detach tag links explicitly so no orphan rows remain on backends
+    # Detach tag + goal links explicitly so no orphan rows remain on backends
     # without FK enforcement (e.g. SQLite without the PRAGMA listener).
     db.execute(file_tags.delete().where(file_tags.c.file_id == record.id))
+    db.query(GoalFile).filter(GoalFile.file_id == record.id).delete(synchronize_session=False)
     db.delete(record)
     db.commit()
     # Each upload owns its blob, so no other record can reference it.

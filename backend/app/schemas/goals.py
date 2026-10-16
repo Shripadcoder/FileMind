@@ -10,6 +10,7 @@ from app.models.goals import (
     GOAL_TYPES,
     PROGRESS_SOURCES,
 )
+from app.schemas.library import FileOut
 
 
 class ExternalLink(BaseModel):
@@ -146,11 +147,43 @@ class GoalOut(BaseModel):
     tasks_done: int = 0
     milestone_count: int = 0
     milestones_done: int = 0
+    file_count: int = 0
 
 
 class GoalDetail(GoalOut):
     tasks: list[TaskOut] = Field(default_factory=list)
     milestones: list[MilestoneOut] = Field(default_factory=list)
+    linked_files: list["LinkedFileOut"] = Field(default_factory=list)
+    suggested_files: list[FileOut] = Field(default_factory=list)
+
+
+class GoalFileLinkCreate(BaseModel):
+    file_id: int
+    task_id: int | None = None
+    note: str = Field(default="", max_length=500)
+
+
+class LinkedFileOut(BaseModel):
+    """A file attached to a goal, with the optional task it supports."""
+
+    file: FileOut
+    task_id: int | None
+    task_title: str | None
+    note: str
+    created_at: datetime
+
+
+class GoalLinkOut(BaseModel):
+    """File-side view: which goals (and tasks) reference this file."""
+
+    goal_id: int
+    goal_title: str
+    goal_type: str
+    goal_status: str
+    task_id: int | None
+    task_title: str | None
+    note: str
+    created_at: datetime
 
 
 class GoalTypeInfo(BaseModel):

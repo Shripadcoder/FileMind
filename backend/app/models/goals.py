@@ -71,6 +71,9 @@ class Goal(Base):
     milestones: Mapped[list["Milestone"]] = relationship(
         back_populates="goal", cascade="all, delete-orphan", order_by="Milestone.position"
     )
+    file_links: Mapped[list["GoalFile"]] = relationship(
+        back_populates="goal", cascade="all, delete-orphan"
+    )
 
 
 class Task(Base):

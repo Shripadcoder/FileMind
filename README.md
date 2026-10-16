@@ -55,6 +55,21 @@ npm run dev
   history), Activity (log form, filters, feed), Dashboard (stat cards, today's
   + overdue, recharts weekly bar, category bars, spotlights, heatmap).
 
+## Phase 4 — files ↔ goals (done)
+- **`goal_files` join**: links at goal level or task level, with an optional
+  note. Duplicates rejected; trashed files cannot be linked; all lookups are
+  per-user (foreign ids → 404).
+- Goal detail returns `linked_files`, `file_count`, and `suggested_files`
+  (category-name match labeled rule-based — never presented as AI inference).
+- File responses carry `goal_count`; `GET /files/{id}/goals` lists referencing
+  goals/tasks for the file-side panel.
+- Deletes clean up explicitly: file delete, goal delete, and task delete all
+  detach their links in code (no reliance on DB-specific cascades).
+- **UI**: related-files section in goal editor (search, task picker, notes,
+  one-click suggestions, unlink), linked-goals section in file detail (goal +
+  task pickers, unlink), `?open=` deep links both ways and from the dashboard,
+  goal-link badges on file rows.
+
 ## Security notes
 - Passwords hashed with bcrypt; JWT secret via `JWT_SECRET_KEY` (set it in `.env`).
 - SQLite FK enforcement (`PRAGMA foreign_keys=ON`) so `ON DELETE` actions hold.
@@ -69,7 +84,6 @@ npm run dev
 ## Known limitations (to be addressed later)
 - No refresh tokens / password reset yet; single JWT lifetime (`JWT_EXPIRE_MINUTES`).
 - No full-text content indexing or semantic search (Phase 5).
-- Goals ↔ files linking (related-file attachments) lands in Phase 4.
 - Folder permanent delete requires the folder to be empty (no recursive wipe).
 - No goal reminders delivery yet (reminder_at stored + surfaced; no email/push).
 - Frontend bundle grew with recharts (~630 KB) — code-split in a later pass.

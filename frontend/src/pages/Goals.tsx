@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { CheckCircle2, Circle, Plus, Trash2 } from "lucide-react";
 import {
   ApiError,
@@ -13,17 +13,21 @@ import {
   deleteTask,
   fmtNum,
   formatDay,
-  getGoal,
+  getGoalWithLinks,
   goalActivities,
   goalTypes,
+  linkFileToGoal,
+  listFiles,
   listGoals,
+  unlinkFileFromGoal,
   updateGoal,
   updateMilestone,
   updateTask,
 } from "../lib/api";
 import type {
   ActivityItem,
-  GoalDetail,
+  FileItem,
+  GoalDetailWithLinks,
   GoalItem,
   GoalTypeInfo,
   MilestoneItem,
@@ -76,9 +80,10 @@ function ProgressBar({ percent }: { percent: number }) {
 
 export default function Goals() {
   const { user, loading } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [goals, setGoals] = useState<GoalItem[]>([]);
   const [catalog, setCatalog] = useState<GoalTypeInfo[]>([]);
-  const [selected, setSelected] = useState<GoalDetail | null>(null);
+  const [selected, setSelected] = useState<GoalDetailWithLinks | null>(null);
   const [history, setHistory] = useState<ActivityItem[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -123,9 +128,24 @@ export default function Goals() {
       .finally(() => setBusy(false));
   }, [user, reload]);
 
+  // Deep link: /goals?open=<id> (used by file links and dashboard entries).
+  useEffect(() => {
+    if (!user) return;
+    const openId = searchParams.get("open");
+    if (openId && !selected) {
+      const id = Number(openId);
+      if (Number.isInteger(id)) {
+        openGoal(id).catch((e) => setError(errMsg(e)));
+        setSearchParams({}, { replace: true });
+      }
+    }
+    // Intentionally run once per login; selection changes must not re-trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
   async function openGoal(id: number) {
     try {
-      const [detail, acts] = await Promise.all([getGoal(id), goalActivities(id)]);
+      const [detail, acts] = await Promise.all([getGoalWithLinks(id), goalActivities(id)]);
       setSelected(detail);
       setHistory(acts);
     } catch (e) {
@@ -315,7 +335,7 @@ function CreateGoalForm({
   onError,
 }: {
   catalog: GoalTypeInfo[];
-  onCreated: (g: GoalDetail) => void;
+  onCreated: (g: GoalDetailWithLinks) => void;
   onError: (msg: string) => void;
 }) {
   const [goalType, setGoalType] = useState("course");
@@ -464,10 +484,10 @@ function GoalEditor({
   onClose,
   notify,
 }: {
-  goal: GoalDetail;
+  goal: GoalDetailWithLinks;
   history: ActivityItem[];
   typeLabel: (t: string) => string;
-  onChanged: (g: GoalDetail) => void;
+  onChanged: (g: GoalDetailWithLinks) => void;
   onDeleted: () => void;
   onClose: () => void;
   notify: (msg: string | null, isError?: boolean) => void;
@@ -500,7 +520,7 @@ function GoalEditor({
   async function toggleTask(task: TaskItem) {
     try {
       await updateTask(task.id, { status: task.status === "done" ? "todo" : "done" });
-      onChanged(await getGoal(goal.id));
+      onChanged(await getGoalWithLinks(goal.id));
     } catch (e) {
       notify(errMsg(e), true);
     }
@@ -510,7 +530,7 @@ function GoalEditor({
     const next = m.status === "completed" ? "not_started" : "completed";
     try {
       await updateMilestone(m.id, { status: next });
-      onChanged(await getGoal(goal.id));
+      onChanged(await getGoalWithLinks(goal.id));
     } catch (e) {
       notify(errMsg(e), true);
     }
@@ -777,7 +797,7 @@ function GoalEditor({
                     <button
                       onClick={() =>
                         deleteTask(t.id)
-                          .then(() => getGoal(goal.id))
+                          .then(() => getGoalWithLinks(goal.id))
                           .then(onChanged)
                           .catch((e) => notify(errMsg(e), true))
                       }
@@ -796,7 +816,7 @@ function GoalEditor({
                 e.preventDefault();
                 if (!newTask.trim()) return;
                 createTask(goal.id, { title: newTask.trim(), due_date: newTaskDue || null })
-                  .then(() => getGoal(goal.id))
+                  .then(() => getGoalWithLinks(goal.id))
                   .then(onChanged)
                   .catch((err) => notify(errMsg(err), true));
                 setNewTask("");
@@ -854,7 +874,7 @@ function GoalEditor({
                     <button
                       onClick={() =>
                         deleteMilestone(m.id)
-                          .then(() => getGoal(goal.id))
+                          .then(() => getGoalWithLinks(goal.id))
                           .then(onChanged)
                           .catch((e) => notify(errMsg(e), true))
                       }
@@ -873,7 +893,7 @@ function GoalEditor({
                 e.preventDefault();
                 if (!newMilestone.trim()) return;
                 createMilestone(goal.id, { title: newMilestone.trim() })
-                  .then(() => getGoal(goal.id))
+                  .then(() => getGoalWithLinks(goal.id))
                   .then(onChanged)
                   .catch((err) => notify(errMsg(err), true));
                 setNewMilestone("");
@@ -891,6 +911,8 @@ function GoalEditor({
               </button>
             </form>
           </div>
+
+          <RelatedFiles goal={goal} onChanged={onChanged} notify={notify} />
 
           <div>
             <h3 className="font-semibold">Activity history ({history.length})</h3>
@@ -912,5 +934,175 @@ function GoalEditor({
         </div>
       </div>
     </section>
+  );
+}
+
+function RelatedFiles({
+  goal,
+  onChanged,
+  notify,
+}: {
+  goal: GoalDetailWithLinks;
+  onChanged: (g: GoalDetailWithLinks) => void;
+  notify: (msg: string | null, isError?: boolean) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [results, setResults] = useState<FileItem[]>([]);
+  const [picked, setPicked] = useState("");
+  const [pickTask, setPickTask] = useState("");
+  const [note, setNote] = useState("");
+
+  async function refresh() {
+    try {
+      onChanged(await getGoalWithLinks(goal.id));
+    } catch (e) {
+      notify(errMsg(e), true);
+    }
+  }
+
+  async function runSearch(e: FormEvent) {
+    e.preventDefault();
+    try {
+      setResults(await listFiles({ q: search.trim() || undefined, limit: 20 }));
+    } catch (err) {
+      notify(errMsg(err), true);
+    }
+  }
+
+  async function link(fileId: number, taskId: number | null, noteText: string) {
+    try {
+      await linkFileToGoal(goal.id, {
+        file_id: fileId,
+        task_id: taskId,
+        note: noteText.trim(),
+      });
+      setPicked("");
+      setPickTask("");
+      setNote("");
+      notify("File linked.");
+      await refresh();
+    } catch (err) {
+      notify(errMsg(err), true);
+    }
+  }
+
+  return (
+    <div>
+      <h3 className="font-semibold">Related files ({goal.linked_files.length})</h3>
+      {goal.linked_files.length === 0 ? (
+        <p className="text-xs text-slate-500">
+          No files linked yet. Attach readings, briefs, or deliverables below.
+        </p>
+      ) : (
+        <ul className="mt-1 flex flex-col gap-1">
+          {goal.linked_files.map((l) => (
+            <li
+              key={`${l.file.id}-${l.task_id ?? "goal"}`}
+              className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 py-1.5 text-sm dark:border-slate-800"
+            >
+              <span className="flex-1 truncate font-medium">{l.file.original_filename}</span>
+              {l.task_title && (
+                <span className="rounded bg-blue-100 px-1.5 text-xs text-blue-800">
+                  {l.task_title}
+                </span>
+              )}
+              {l.note && <span className="truncate text-xs text-slate-500">{l.note}</span>}
+              <Link to={`/files?open=${l.file.id}`} className="text-xs underline">
+                Open
+              </Link>
+              <button
+                onClick={() =>
+                  unlinkFileFromGoal(goal.id, l.file.id, l.task_id)
+                    .then(() => refresh())
+                    .catch((err) => notify(errMsg(err), true))
+                }
+                className="text-xs text-red-600 underline"
+                aria-label={`Unlink ${l.file.original_filename}`}
+              >
+                Unlink
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {goal.suggested_files.length > 0 && (
+        <div className="mt-2">
+          <p className="text-xs text-slate-500">
+            Suggestions (same category, rule-based — not AI):
+          </p>
+          <ul className="mt-1 flex flex-col gap-1">
+            {goal.suggested_files.map((f) => (
+              <li key={f.id} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 truncate">{f.original_filename}</span>
+                <button onClick={() => void link(f.id, null, "")} className="text-xs underline">
+                  Link
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <form onSubmit={(e) => void runSearch(e)} className="mt-2 flex gap-1">
+        <input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search files to link…"
+          aria-label="Search files to link"
+          className="flex-1 rounded border border-slate-200 bg-transparent px-2 py-1 text-sm dark:border-slate-700"
+        />
+        <button type="submit" className="text-sm underline">
+          Search
+        </button>
+      </form>
+      {results.length > 0 && (
+        <form
+          className="mt-1 flex flex-wrap items-center gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (!picked) return;
+            void link(Number(picked), pickTask ? Number(pickTask) : null, note);
+          }}
+        >
+          <select
+            value={picked}
+            onChange={(e) => setPicked(e.target.value)}
+            aria-label="File to link"
+            className="max-w-48 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+          >
+            <option value="">Choose a file…</option>
+            {results.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.original_filename}
+              </option>
+            ))}
+          </select>
+          <select
+            value={pickTask}
+            onChange={(e) => setPickTask(e.target.value)}
+            aria-label="Attach to a specific task or the whole goal"
+            className="max-w-40 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+          >
+            <option value="">Whole goal</option>
+            {goal.tasks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.title}
+              </option>
+            ))}
+          </select>
+          <input
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="Note"
+            aria-label="Link note"
+            className="w-28 rounded border border-slate-200 bg-transparent px-1 py-1 text-sm dark:border-slate-700"
+          />
+          <button type="submit" className="text-sm underline">
+            Link
+          </button>
+        </form>
+      )}
+    </div>
   );
 }

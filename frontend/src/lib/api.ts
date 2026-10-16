@@ -94,6 +94,7 @@ export interface FileItem {
   tags: string[];
   is_trashed: boolean;
   duplicate_count: number;
+  goal_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -589,11 +590,14 @@ export function getGoal(id: number): Promise<GoalDetail> {
   return apiFetch(`/api/goals/${id}`);
 }
 
-export function createGoal(body: Record<string, unknown>): Promise<GoalDetail> {
+export function createGoal(body: Record<string, unknown>): Promise<GoalDetailWithLinks> {
   return apiFetch("/api/goals", { method: "POST", body: JSON.stringify(body) });
 }
 
-export function updateGoal(id: number, patch: Record<string, unknown>): Promise<GoalDetail> {
+export function updateGoal(
+  id: number,
+  patch: Record<string, unknown>,
+): Promise<GoalDetailWithLinks> {
   return apiFetch(`/api/goals/${id}`, { method: "PATCH", body: JSON.stringify(patch) });
 }
 
@@ -715,3 +719,60 @@ export const HEALTH_LABELS: Record<string, string> = {
   not_started: "Not started",
   on_hold: "On hold",
 };
+
+/* ---------- goal <-> file links (Phase 4) ---------- */
+
+export interface LinkedFile {
+  file: FileItem;
+  task_id: number | null;
+  task_title: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface GoalLink {
+  goal_id: number;
+  goal_title: string;
+  goal_type: string;
+  goal_status: string;
+  task_id: number | null;
+  task_title: string | null;
+  note: string;
+  created_at: string;
+}
+
+export interface GoalDetailWithLinks extends GoalDetail {
+  linked_files: LinkedFile[];
+  suggested_files: FileItem[];
+}
+
+export function linkFileToGoal(
+  goalId: number,
+  body: { file_id: number; task_id?: number | null; note?: string },
+): Promise<LinkedFile> {
+  return apiFetch(`/api/goals/${goalId}/files`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export function unlinkFileFromGoal(
+  goalId: number,
+  fileId: number,
+  taskId?: number | null,
+): Promise<{ deleted: boolean }> {
+  const qs = taskId !== undefined && taskId !== null ? `?task_id=${taskId}` : "";
+  return apiFetch(`/api/goals/${goalId}/files/${fileId}${qs}`, { method: "DELETE" });
+}
+
+export function goalFiles(goalId: number): Promise<LinkedFile[]> {
+  return apiFetch(`/api/goals/${goalId}/files`);
+}
+
+export function fileGoals(fileId: number): Promise<GoalLink[]> {
+  return apiFetch(`/api/files/${fileId}/goals`);
+}
+
+export function getGoalWithLinks(id: number): Promise<GoalDetailWithLinks> {
+  return apiFetch(`/api/goals/${id}`);
+}
