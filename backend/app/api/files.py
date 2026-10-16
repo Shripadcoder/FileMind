@@ -15,7 +15,8 @@ from app.api.helpers import (
 )
 from app.core.config import settings
 from app.core.time import utcnow
-from app.models.file import File
+from app.services.activity_log import log_activity
+from app.models.file import File, file_tags
 from app.models.taxonomy import Category, Tag
 from app.models.user import User
 from app.db.session import get_db
@@ -145,6 +146,15 @@ def upload_file(
     )
     record.tags = _resolve_tags(db, current, [tags] if tags else None)
     db.add(record)
+    db.flush()  # assign record.id so the activity row can reference it
+    log_activity(
+        db,
+        owner_id=current.id,
+        activity_type="file_uploaded",
+        title=f"Uploaded {original}",
+        value=float(size),
+        details={"file_id": record.id, "size_bytes": size, "mime_type": mime_type},
+    )
     db.commit()
     db.refresh(record)
     out = file_to_out(record, duplicate_counts(db, current))
@@ -362,6 +372,9 @@ def delete_file(
             detail="Permanent deletion requires ?permanent=true (trash first to hide it)",
         )
     stored_name, owner_id = record.stored_name, record.owner_id
+    # Detach tag links explicitly so no orphan rows remain on backends
+    # without FK enforcement (e.g. SQLite without the PRAGMA listener).
+    db.execute(file_tags.delete().where(file_tags.c.file_id == record.id))
     db.delete(record)
     db.commit()
     # Each upload owns its blob, so no other record can reference it.

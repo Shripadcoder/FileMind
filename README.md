@@ -30,27 +30,30 @@ npm run dev
 # http://localhost:5173
 ```
 
-## Phase 2 — what works
-- **Auth**: register / login / me (bcrypt passwords, JWT bearer). Every
-  library endpoint is per-user; foreign ids return 404 (no enumeration).
-- **Folders**: create, rename, move (cycle-safe), trash/restore (cascades to
-  subfolders + files), permanent delete only with `?permanent=true` on empty
-  folders. Breadcrumb path endpoint included.
-- **Files**: multipart upload (size cap from `MAX_UPLOAD_MB`, executables
-  rejected with 415), download (attachment), inline preview for
-  images / PDF / text-code (others 415), rename / move / favorite /
-  description / tags / category correction.
-- **Organization**: 8 system categories seeded at startup (read-only) + custom
-  categories; per-user tags; rule-based category suggestion reported as
-  `suggestion_source: "rule"` (correctable — learned suggestions land in Phase 5).
-- **Search**: filename, description, MIME prefix, category, tag, favorite,
-  created-date range, trashed/duplicates filters, sorting, pagination.
-- **Duplicates**: SHA-256 grouping (`GET /api/files/duplicates` + counts on
-  every file). Copies keep separate blobs — deleting one never affects others.
-- **Trash**: soft-delete everywhere; restore; permanent delete is explicit and
-  removes the stored bytes too.
-- **UI**: Sign in/Register, My Files (browse / duplicates / trash views,
-  upload, filters, detail editor, preview modal, confirm dialogs).
+## Phase 2 — file manager
+- Auth (bcrypt + JWT, per-user 404s), folders (move/trash-cascade/explicit
+  permanent delete), file upload/download/preview, 8 system + custom categories,
+  tags, SHA-256 duplicates, trash/recovery, metadata search.
+
+## Phase 3 — goals & activity
+- **Goals**: 6 types (course, assignment, coding, project, reading, custom) with
+  per-type progress derivation (tasks / milestones / manual target+unit) and
+  pace-based health (on track / behind / at risk / overdue / completed / on hold).
+  Fields: category, priority, status, start/target dates, notes, external links,
+  reminder. `GET /api/goal-types` documents the defaults.
+- **Tasks & milestones**: CRUD nested under goals; completing either (or a goal,
+  or a progress change) writes an auto `Activity` row alongside the mutation.
+- **Activities**: fixed type vocabulary, manual logging with value + date +
+  optional goal link, filters, delete. Goal deletion preserves history
+  (goal_id nulled explicitly, never relying on DB-specific cascades).
+- File uploads auto-log `file_uploaded` with the real file id.
+- **Dashboard**: `GET /api/dashboard/summary` aggregates active/completed,
+  overdue + upcoming + today's tasks, reminders, progress by category/type,
+  weekly series, 90-day calendar, course/coding/project spotlights, recent
+  files and activities — all from live rows, category/date-range filterable.
+- **UI**: Goals (filters, create, detail editor, tasks/milestones, links,
+  history), Activity (log form, filters, feed), Dashboard (stat cards, today's
+  + overdue, recharts weekly bar, category bars, spotlights, heatmap).
 
 ## Security notes
 - Passwords hashed with bcrypt; JWT secret via `JWT_SECRET_KEY` (set it in `.env`).
@@ -66,5 +69,7 @@ npm run dev
 ## Known limitations (to be addressed later)
 - No refresh tokens / password reset yet; single JWT lifetime (`JWT_EXPIRE_MINUTES`).
 - No full-text content indexing or semantic search (Phase 5).
-- No goal/activity system yet (Phase 3); dashboard metrics still placeholder.
+- Goals ↔ files linking (related-file attachments) lands in Phase 4.
 - Folder permanent delete requires the folder to be empty (no recursive wipe).
+- No goal reminders delivery yet (reminder_at stored + surfaced; no email/push).
+- Frontend bundle grew with recharts (~630 KB) — code-split in a later pass.
