@@ -2,6 +2,7 @@ from sqlalchemy.orm import DeclarativeBase
 
 
 class Base(DeclarativeBase):
-    """Declarative base. Phase 1 has no tables; domain models land in Phase 2/3."""
+    """Declarative base. Domain models are imported in app.models so that
+    Alembic autogenerate sees them. Never call create_all() in app code."""
 
     pass

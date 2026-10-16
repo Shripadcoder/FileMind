@@ -10,13 +10,15 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import settings
 from app.db.base import Base
 
+import app.models  # noqa: F401 - register tables so autogenerate sees them
+
 config = context.config
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# Phase 1: no tables yet. Phase 2 registers file/folder models here via imports.
+# Phase 2: file/folder/category/tag/user models registered via app.models.
 target_metadata = Base.metadata
 
 

@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     app_name: str = "FileMind API"
     database_url: str = "sqlite:///./filemind_dev.db"
     secret_key: str = "change-me-in-local-env-only"
+    jwt_secret_key: str = "change-me-in-local-env-only"
+    jwt_expire_minutes: int = 60 * 24
     storage_dir: str = "./storage"
     max_upload_mb: int = 50
     # External AI (embeddings/LLM) is opt-in. Default off so private

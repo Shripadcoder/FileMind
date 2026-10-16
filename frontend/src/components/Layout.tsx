@@ -1,4 +1,4 @@
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, Link, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bot,
@@ -13,6 +13,7 @@ import {
   Target,
 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useAuth } from "../lib/auth";
 
 const NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -36,6 +37,8 @@ function useTheme() {
 
 export default function Layout() {
   const { dark, toggle } = useTheme();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 border-r border-slate-200 p-4 dark:border-slate-800 md:block">
@@ -73,14 +76,39 @@ export default function Layout() {
               </NavLink>
             ))}
           </nav>
-          <button
-            onClick={toggle}
-            className="ml-auto flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700"
-            aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
-          >
-            {dark ? <Sun size={16} /> : <Moon size={16} />}
-            {dark ? "Light" : "Dark"}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {user ? (
+              <>
+                <span className="hidden text-sm text-slate-500 sm:inline" title={user.email}>
+                  {user.display_name || user.email}
+                </span>
+                <button
+                  onClick={() => {
+                    logout();
+                    navigate("/login");
+                  }}
+                  className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700"
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <Link
+                to="/login"
+                className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700"
+              >
+                Sign in
+              </Link>
+            )}
+            <button
+              onClick={toggle}
+              className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700"
+              aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+            >
+              {dark ? <Sun size={16} /> : <Moon size={16} />}
+              {dark ? "Light" : "Dark"}
+            </button>
+          </div>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 p-4 md:p-6">
           <Outlet />
