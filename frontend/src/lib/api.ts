@@ -776,3 +776,136 @@ export function fileGoals(fileId: number): Promise<GoalLink[]> {
 export function getGoalWithLinks(id: number): Promise<GoalDetailWithLinks> {
   return apiFetch(`/api/goals/${id}`);
 }
+
+/* ---------- AI (Phase 5, local-first) ---------- */
+
+export interface SuggestOut {
+  file_id: number;
+  current_category: string | null;
+  suggested_category: string | null;
+  confidence: number | null;
+  suggested_tags: string[];
+  novel_tags: string[];
+  source: string;
+}
+
+export interface SummaryOut {
+  file_id: number;
+  summary: string;
+  source: string;
+  sentence_count: number;
+}
+
+export interface ContentOut {
+  file_id: number;
+  filename: string;
+  method: string;
+  char_count: number;
+  page_refs: Array<{ page: number; start: number; end: number }>;
+  text: string;
+  extracted_at: string;
+}
+
+export interface SemanticHit {
+  file_id: number;
+  filename: string;
+  category_name: string | null;
+  score: number;
+  snippet: string;
+}
+
+export interface Citation {
+  file_id: number;
+  filename: string;
+  page: number | null;
+  chunk: number;
+  score: number;
+}
+
+export interface AskOut {
+  question: string;
+  answer: string;
+  citations: Citation[];
+  source: string;
+  engine: string;
+}
+
+export interface AssistantOut {
+  question: string;
+  intent: string;
+  answer: string;
+  facts: string[];
+  suggestions: string[];
+  source: string;
+}
+
+export interface AIStatus {
+  local_engine: string;
+  extraction_methods: string[];
+  ai_processing_enabled: boolean;
+  provider_configured: boolean;
+  external_allowed_for_user: boolean;
+  embedding_model: string;
+  llm_model: string;
+}
+
+export interface AISettings {
+  ai_consent_external: boolean;
+  ai_processing_enabled: boolean;
+  provider_configured: boolean;
+}
+
+export function extractFile(id: number): Promise<{ file_id: number; extracted: boolean; reason?: string | null }> {
+  return apiFetch(`/api/files/${id}/extract`, { method: "POST" });
+}
+
+export function fileContent(id: number): Promise<ContentOut> {
+  return apiFetch(`/api/files/${id}/content`);
+}
+
+export function fileSummary(id: number): Promise<SummaryOut> {
+  return apiFetch(`/api/files/${id}/summary`);
+}
+
+export function suggestForFile(id: number): Promise<SuggestOut> {
+  return apiFetch(`/api/files/${id}/suggest`, { method: "POST" });
+}
+
+export function semanticSearch(
+  query: string,
+  limit = 10,
+): Promise<{ query: string; engine: string; hits: SemanticHit[] }> {
+  return apiFetch("/api/search/semantic", {
+    method: "POST",
+    body: JSON.stringify({ query, limit }),
+  });
+}
+
+export function askDocs(question: string, fileIds?: number[]): Promise<AskOut> {
+  return apiFetch("/api/ask", {
+    method: "POST",
+    body: JSON.stringify({ question, file_ids: fileIds ?? null }),
+  });
+}
+
+export function askAssistant(question: string): Promise<AssistantOut> {
+  return apiFetch("/api/assistant", {
+    method: "POST",
+    body: JSON.stringify({ question }),
+  });
+}
+
+export function aiStatus(): Promise<AIStatus> {
+  return apiFetch("/api/ai/status");
+}
+
+export function getAISettings(): Promise<AISettings> {
+  return apiFetch("/api/settings");
+}
+
+export function updateAISettings(consent: boolean): Promise<AISettings> {
+  return apiFetch("/api/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ ai_consent_external: consent }),
+  });
+}

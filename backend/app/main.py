@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 import app.models  # noqa: F401  (register tables on Base.metadata for Alembic/migrations)
+from app.api.ai import router as ai_router
 from app.api.activities import router as activities_router
 from app.api.auth import router as auth_router
 from app.api.dashboard import router as dashboard_router
@@ -52,6 +53,7 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.include_router(health_router, prefix="/api")
+    app.include_router(ai_router, prefix="/api")
     app.include_router(auth_router, prefix="/api")
     app.include_router(folders_router, prefix="/api")
     app.include_router(files_router, prefix="/api")

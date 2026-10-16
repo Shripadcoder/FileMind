@@ -44,6 +44,16 @@ def dashboard_summary(
     db: Session = Depends(get_db),
     current: User = Depends(get_current_user),
 ):
+    return build_dashboard_summary(db, current, category, activity_from, activity_to)
+
+
+def build_dashboard_summary(
+    db: Session,
+    current: User,
+    category: str | None = None,
+    activity_from: date | None = None,
+    activity_to: date | None = None,
+) -> DashboardSummary:
     today = date.today()
     now = utcnow()
 

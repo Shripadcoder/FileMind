@@ -70,6 +70,29 @@ npm run dev
   task pickers, unlink), `?open=` deep links both ways and from the dashboard,
   goal-link badges on file rows.
 
+## Phase 5 — local-first AI (done)
+- **Extraction** (`document_contents`, offline): text/code, PDF with page refs,
+  DOCX — auto-run at upload (best-effort, never fails the upload), backfillable
+  via `POST /files/{id}/extract`. Unsupported types report honestly.
+- **Semantic search** (`POST /search/semantic`): sklearn TF-IDF over the user's
+  own corpus with chunk-level snippets and scores. Zero-overlap docs excluded.
+- **Suggestions** (`POST /files/{id}/suggest`): centroid-similarity category +
+  tag-vocabulary ranking, labeled `local-content`, accepted via normal PATCH.
+- **Document Q&A** (`POST /ask`): extractive answers = verbatim quotes + file
+  (and page) citations; no relevant passages → honest admission, file scoping
+  enforced per-user.
+- **Assistant** (`POST /assistant`): deterministic intents (today, on-track,
+  least-progress, files-for, week summary, prioritize, overdue, upcoming) over
+  live records, with FACTS vs SUGGESTIONS separated. Real gap fixed in testing:
+  due-today tasks now rank in prioritization.
+- **Consent**: double gate (global `AI_PROCESSING_ENABLED` + per-user toggle in
+  Settings) for any external provider; `Embedder`/`LLMProvider`/`VectorStore`
+  interfaces plus `document_vectors` table are the swap-in seams
+  (`GET /ai/status` reports the effective configuration).
+- **UI**: Smart Search (semantic + Ask with citations), file AI-insights panel
+  (summary, accept/reject suggestions, extracted text), Assistant chat with
+  facts/suggestions display, Settings consent page.
+
 ## Security notes
 - Passwords hashed with bcrypt; JWT secret via `JWT_SECRET_KEY` (set it in `.env`).
 - SQLite FK enforcement (`PRAGMA foreign_keys=ON`) so `ON DELETE` actions hold.
@@ -83,7 +106,9 @@ npm run dev
 
 ## Known limitations (to be addressed later)
 - No refresh tokens / password reset yet; single JWT lifetime (`JWT_EXPIRE_MINUTES`).
-- No full-text content indexing or semantic search (Phase 5).
+- Semantic search refits TF-IDF per query (fine for personal corpora; swap in a
+  hosted embedder + `document_vectors` for larger scale).
+- No OCR binaries bundled (scanned images report no extractable text).
 - Folder permanent delete requires the folder to be empty (no recursive wipe).
 - No goal reminders delivery yet (reminder_at stored + surfaced; no email/push).
 - Frontend bundle grew with recharts (~630 KB) — code-split in a later pass.

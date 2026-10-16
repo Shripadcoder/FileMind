@@ -17,6 +17,7 @@ from app.api.helpers import (
 from app.core.config import settings
 from app.core.time import utcnow
 from app.services.activity_log import log_activity
+from app.models.ai import DocumentContent, DocumentVector
 from app.models.file import File, file_tags
 from app.models.links import GoalFile
 from app.models.taxonomy import Category, Tag
@@ -160,6 +161,14 @@ def upload_file(
     db.commit()
     db.refresh(record)
     out = file_to_out(record, duplicate_counts(db, current), link_counts(db, current))
+    # Best-effort local extraction (offline, capped). A failure here must
+    # never fail the upload itself.
+    try:
+        from app.api.ai import run_extraction
+
+        run_extraction(db, current, record)
+    except Exception:  # noqa: BLE001 - extraction is auxiliary
+        pass
     return FileUploadOut(
         **out.model_dump(), suggested_category=suggested_name, suggestion_source=suggestion_source
     )
@@ -379,6 +388,10 @@ def delete_file(
     # without FK enforcement (e.g. SQLite without the PRAGMA listener).
     db.execute(file_tags.delete().where(file_tags.c.file_id == record.id))
     db.query(GoalFile).filter(GoalFile.file_id == record.id).delete(synchronize_session=False)
+    db.query(DocumentContent).filter(DocumentContent.file_id == record.id).delete(
+        synchronize_session=False)
+    db.query(DocumentVector).filter(DocumentVector.file_id == record.id).delete(
+        synchronize_session=False)
     db.delete(record)
     db.commit()
     # Each upload owns its blob, so no other record can reference it.

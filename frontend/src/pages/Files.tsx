@@ -19,7 +19,10 @@ import {
   deleteFile,
   deleteFolder,
   downloadBlob,
+  extractFile,
+  fileContent,
   fileGoals,
+  fileSummary,
   formatBytes,
   formatDate,
   getFile,
@@ -35,6 +38,7 @@ import {
   previewBlob,
   restoreFile,
   restoreFolder,
+  suggestForFile,
   trashFile,
   trashFolder,
   unlinkFileFromGoal,
@@ -44,11 +48,14 @@ import {
 } from "../lib/api";
 import type {
   Category,
+  ContentOut,
   DuplicateGroup,
   FileItem,
   Folder,
   GoalItem,
   GoalLink,
+  SuggestOut,
+  SummaryOut,
   TaskItem,
   UploadResult,
 } from "../lib/api";
@@ -296,6 +303,8 @@ function FileDetail({
       </div>
 
       <LinkedGoals file={file} onChanged={onChanged} notify={notify} />
+
+      <AIInsights file={file} onChanged={onChanged} notify={notify} />
 
       <form
         className="mt-4 flex flex-col gap-2"
@@ -1334,4 +1343,188 @@ async function getFileRefreshed(
   } catch {
     /* file may be gone; selection refresh already handled by callers */
   }
+}
+
+function AIInsights({
+  file,
+  onChanged,
+  notify,
+}: {
+  file: FileItem;
+  onChanged: (f: FileItem | null) => void;
+  notify: (msg: string | null, isError?: boolean) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loaded, setLoaded] = useState(false);
+  const [summary, setSummary] = useState<SummaryOut | null>(null);
+  const [suggest, setSuggest] = useState<SuggestOut | null>(null);
+  const [content, setContent] = useState<ContentOut | null>(null);
+  const [unavailable, setUnavailable] = useState<string | null>(null);
+
+  useEffect(() => {
+    setLoaded(false);
+    setSummary(null);
+    setSuggest(null);
+    setContent(null);
+    setUnavailable(null);
+  }, [file.id]);
+
+  async function load() {
+    setOpen(true);
+    if (loaded) return;
+    try {
+      const [s, g] = await Promise.all([
+        fileSummary(file.id).catch(() => null),
+        suggestForFile(file.id).catch(() => null),
+      ]);
+      let c: ContentOut | null = null;
+      try {
+        c = await fileContent(file.id);
+      } catch {
+        c = null;
+      }
+      setSummary(s);
+      setSuggest(g);
+      setContent(c);
+      if (!s && !g && !c) {
+        setUnavailable(
+          "No extracted text for this file type yet (text, PDF, and Word are supported).",
+        );
+      }
+    } catch (e) {
+      notify(errMsg(e), true);
+    } finally {
+      setLoaded(true);
+    }
+  }
+
+  async function reExtract() {
+    try {
+      const res = await extractFile(file.id);
+      if (!res.extracted) {
+        setUnavailable(res.reason ?? "Extraction not available for this file type.");
+        return;
+      }
+      setLoaded(false);
+      setUnavailable(null);
+      await load();
+      notify("Text extracted.");
+    } catch (e) {
+      notify(errMsg(e), true);
+    }
+  }
+
+  if (!open) {
+    return (
+      <button onClick={() => void load()} className="mt-3 text-sm underline">
+        Show AI insights (summary & suggestions, computed locally)
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+      <div className="flex items-center gap-2">
+        <h3 className="text-sm font-semibold">AI insights</h3>
+        <span className="rounded bg-green-100 px-1.5 text-xs text-green-800">local</span>
+        <button onClick={() => setOpen(false)} className="ml-auto text-xs underline">
+          Hide
+        </button>
+      </div>
+      {!loaded ? (
+        <p className="mt-1 text-xs text-slate-500">Analyzing…</p>
+      ) : unavailable ? (
+        <div className="mt-1 text-xs text-slate-500">
+          <p>{unavailable}</p>
+          <button onClick={() => void reExtract()} className="mt-1 underline">
+            Try extracting again
+          </button>
+        </div>
+      ) : (
+        <div className="mt-2 flex flex-col gap-2 text-sm">
+          {summary && summary.summary && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500">SUMMARY (extractive)</p>
+              <p className="mt-0.5">{summary.summary}</p>
+            </div>
+          )}
+          {suggest && (
+            <div>
+              <p className="text-xs font-semibold text-slate-500">
+                SUGGESTIONS ({suggest.source})
+              </p>
+              {suggest.suggested_category ? (
+                <p className="mt-0.5">
+                  Category: <strong>{suggest.suggested_category}</strong>
+                  {suggest.confidence !== null && (
+                    <span className="text-xs text-slate-500">
+                      {" "}
+                      (confidence {suggest.confidence.toFixed(2)})
+                    </span>
+                  )}{" "}
+                  {suggest.suggested_category !== file.category_name && (
+                    <button
+                      onClick={() =>
+                        updateFile(file.id, { category_name: suggest.suggested_category ?? "" })
+                          .then((f) => {
+                            onChanged(f);
+                            notify("Category updated from suggestion.");
+                          })
+                          .catch((e) => notify(errMsg(e), true))
+                      }
+                      className="text-xs underline"
+                    >
+                      Accept
+                    </button>
+                  )}
+                </p>
+              ) : (
+                <p className="mt-0.5 text-xs text-slate-500">
+                  No confident category suggestion from content.
+                </p>
+              )}
+              {suggest.suggested_tags.length > 0 && (
+                <p className="mt-0.5">
+                  Tags: {suggest.suggested_tags.join(", ")}{" "}
+                  <button
+                    onClick={() => {
+                      const merged = Array.from(
+                        new Set([...file.tags, ...suggest.suggested_tags]),
+                      );
+                      updateFile(file.id, { tags: merged })
+                        .then((f) => {
+                          onChanged(f);
+                          notify("Tags updated from suggestions.");
+                        })
+                        .catch((e) => notify(errMsg(e), true));
+                    }}
+                    className="text-xs underline"
+                  >
+                    Accept
+                  </button>
+                </p>
+              )}
+              {suggest.novel_tags.length > 0 && (
+                <p className="mt-0.5 text-xs text-slate-500">
+                  New tag ideas: {suggest.novel_tags.join(", ")}
+                </p>
+              )}
+            </div>
+          )}
+          {content && (
+            <details>
+              <summary className="cursor-pointer text-xs text-slate-500">
+                Extracted text ({content.char_count.toLocaleString()} chars, {content.method}
+                {content.page_refs.length > 1 ? `, ${content.page_refs.length} pages` : ""})
+              </summary>
+              <pre className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded bg-slate-50 p-2 text-xs dark:bg-slate-900">
+                {content.text.slice(0, 4000)}
+                {content.text.length > 4000 ? "…" : ""}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
