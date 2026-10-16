@@ -1,6 +1,17 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent } from "react";
 import { Link } from "react-router-dom";
+import {
+  BookOpen,
+  CheckCircle2,
+  Code2,
+  FileUp,
+  Flag,
+  GraduationCap,
+  NotebookPen,
+  Send,
+  StickyNote,
+} from "lucide-react";
 import {
   ACTIVITY_TYPE_LABELS,
   ApiError,
@@ -13,6 +24,7 @@ import {
 } from "../lib/api";
 import type { ActivityItem, GoalItem } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { Button, EmptyState, Notice, PageHeader, Spinner, cardCls, inputCls } from "../components/ui";
 
 const MANUAL_TYPES = [
   "lecture_completed",
@@ -23,8 +35,35 @@ const MANUAL_TYPES = [
   "note",
 ];
 
+const TYPE_ICONS: Record<string, typeof Code2> = {
+  lecture_completed: GraduationCap,
+  problem_solved: Code2,
+  assignment_submitted: Send,
+  milestone_completed: Flag,
+  task_completed: CheckCircle2,
+  goal_created: Flag,
+  goal_updated: Flag,
+  goal_completed: CheckCircle2,
+  progress_updated: CheckCircle2,
+  file_uploaded: FileUp,
+  document_reviewed: BookOpen,
+  reading_session: BookOpen,
+  code_commit: Code2,
+  note: StickyNote,
+};
+
 function errMsg(e: unknown): string {
   return e instanceof ApiError ? e.message : "Something went wrong";
+}
+
+function dayLabel(iso: string): string {
+  const d = new Date(iso);
+  const today = new Date();
+  const yesterday = new Date();
+  yesterday.setDate(today.getDate() - 1);
+  if (d.toDateString() === today.toDateString()) return "Today";
+  if (d.toDateString() === yesterday.toDateString()) return "Yesterday";
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
 }
 
 export default function Activity() {
@@ -66,6 +105,16 @@ export default function Activity() {
     reload().catch((e) => setError(errMsg(e)));
   }, [user, reload]);
 
+  const grouped = useMemo(() => {
+    const map = new Map<string, ActivityItem[]>();
+    for (const a of items) {
+      const key = new Date(a.occurred_at).toDateString();
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)?.push(a);
+    }
+    return [...map.entries()];
+  }, [items]);
+
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!logTitle.trim()) {
@@ -94,178 +143,92 @@ export default function Activity() {
     }
   }
 
-  if (loading) return <p className="text-sm text-slate-500">Loading…</p>;
+  if (loading) return <Spinner />;
   if (!user) {
     return (
-      <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">Activity</h1>
-        <p className="text-sm text-slate-500">
-          Sign in to view your activity.{" "}
-          <Link to="/login" className="underline">
-            Go to sign in
-          </Link>
-        </p>
+      <div className="flex flex-col gap-4">
+        <PageHeader title="Activity" sub="Sign in to view your activity." />
+        <EmptyState
+          title="You're signed out"
+          action={<Link to="/login" className="rounded-lg bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white">Sign in</Link>}
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-bold">Activity</h1>
+    <div className="mx-auto flex w-full max-w-3xl flex-col gap-4">
+      <PageHeader title="Activity" sub="Completions log themselves — record the rest here." />
 
-      {notice && (
-        <div role="status" className="rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-900">
-          {notice}
-        </div>
-      )}
-      {error && (
-        <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-sm text-red-800">
-          {error}
-        </div>
-      )}
+      {notice && <Notice kind="ok">{notice}</Notice>}
+      {error && <Notice kind="error">{error}</Notice>}
 
-      <form
-        onSubmit={(e) => void submit(e)}
-        className="flex flex-col gap-2 rounded-xl border border-slate-200 p-4 dark:border-slate-800"
-      >
-        <h2 className="font-semibold">Log activity</h2>
-        <p className="text-xs text-slate-500">
-          Record real work — completed lectures, solved problems, reading sessions. Completions of
-          tasks, milestones, goals, and file uploads are logged automatically.
-        </p>
-        <div className="grid gap-2 sm:grid-cols-2">
+      <form onSubmit={(e) => void submit(e)} className={`${cardCls} fm-fade flex flex-col gap-2.5 p-4 md:p-5`}>
+        <h2 className="flex items-center gap-1.5 text-[15px] font-bold tracking-tight">
+          <NotebookPen size={16} className="text-indigo-500" aria-hidden /> Log activity
+        </h2>
+        <div className="grid gap-2.5 sm:grid-cols-2">
           <label className="flex flex-col gap-1 text-sm">
-            Type
-            <select
-              value={logType}
-              onChange={(e) => setLogType(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-            >
+            <span className="text-xs text-slate-400">Type</span>
+            <select value={logType} onChange={(e) => setLogType(e.target.value)} className={inputCls}>
               {MANUAL_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {ACTIVITY_TYPE_LABELS[t]}
-                </option>
+                <option key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</option>
               ))}
             </select>
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            Title
-            <input
-              value={logTitle}
-              onChange={(e) => setLogTitle(e.target.value)}
-              placeholder="e.g. Solved 5 graph problems"
-              required
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-            />
+            <span className="text-xs text-slate-400">Title</span>
+            <input value={logTitle} onChange={(e) => setLogTitle(e.target.value)} placeholder="e.g. Solved 5 graph problems" required className={inputCls} />
           </label>
           <label className="flex flex-col gap-1 text-sm">
-            Related goal (optional)
-            <select
-              value={logGoal}
-              onChange={(e) => setLogGoal(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-            >
+            <span className="text-xs text-slate-400">Related goal</span>
+            <select value={logGoal} onChange={(e) => setLogGoal(e.target.value)} className={inputCls}>
               <option value="">None</option>
               {goals.map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.title}
-                </option>
+                <option key={g.id} value={g.id}>{g.title}</option>
               ))}
             </select>
           </label>
           <div className="grid grid-cols-2 gap-2">
             <label className="flex flex-col gap-1 text-sm">
-              Amount (optional)
-              <input
-                type="number"
-                min={0}
-                step="any"
-                value={logValue}
-                onChange={(e) => setLogValue(e.target.value)}
-                placeholder="e.g. 5"
-                className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-              />
+              <span className="text-xs text-slate-400">Amount</span>
+              <input type="number" min={0} step="any" value={logValue} onChange={(e) => setLogValue(e.target.value)} placeholder="e.g. 5" className={inputCls} />
             </label>
             <label className="flex flex-col gap-1 text-sm">
-              Date (default today)
-              <input
-                type="date"
-                value={logDate}
-                onChange={(e) => setLogDate(e.target.value)}
-                className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-              />
+              <span className="text-xs text-slate-400">Date</span>
+              <input type="date" value={logDate} onChange={(e) => setLogDate(e.target.value)} className={inputCls} />
             </label>
           </div>
           <label className="flex flex-col gap-1 text-sm sm:col-span-2">
-            Description
-            <input
-              value={logDesc}
-              onChange={(e) => setLogDesc(e.target.value)}
-              className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 dark:border-slate-700"
-            />
+            <span className="text-xs text-slate-400">Description</span>
+            <input value={logDesc} onChange={(e) => setLogDesc(e.target.value)} className={inputCls} />
           </label>
         </div>
-        <button
-          type="submit"
-          className="self-start rounded-lg bg-slate-900 px-3 py-1.5 text-sm font-medium text-white dark:bg-slate-100 dark:text-slate-900"
-        >
-          Log activity
-        </button>
+        <Button type="submit" variant="primary" className="self-start">Log activity</Button>
       </form>
 
       <form
-        className="flex flex-wrap items-center gap-2"
+        className={`${cardCls} flex flex-wrap items-center gap-2 p-3`}
         onSubmit={(e) => {
           e.preventDefault();
           void reload().catch((err) => setError(errMsg(err)));
         }}
       >
-        <select
-          value={filterType}
-          onChange={(e) => setFilterType(e.target.value)}
-          aria-label="Filter by activity type"
-          className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-        >
+        <select value={filterType} onChange={(e) => setFilterType(e.target.value)} aria-label="Filter by activity type" className={`${inputCls} flex-1`}>
           <option value="">All types</option>
           {Object.entries(ACTIVITY_TYPE_LABELS).map(([t, label]) => (
-            <option key={t} value={t}>
-              {label}
-            </option>
+            <option key={t} value={t}>{label}</option>
           ))}
         </select>
-        <select
-          value={filterGoal}
-          onChange={(e) => setFilterGoal(e.target.value)}
-          aria-label="Filter by goal"
-          className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-        >
+        <select value={filterGoal} onChange={(e) => setFilterGoal(e.target.value)} aria-label="Filter by goal" className={`${inputCls} flex-1`}>
           <option value="">All goals</option>
           {goals.map((g) => (
-            <option key={g.id} value={g.id}>
-              {g.title}
-            </option>
+            <option key={g.id} value={g.id}>{g.title}</option>
           ))}
         </select>
-        <input
-          type="date"
-          value={from}
-          onChange={(e) => setFrom(e.target.value)}
-          aria-label="From date"
-          className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-        />
-        <input
-          type="date"
-          value={to}
-          onChange={(e) => setTo(e.target.value)}
-          aria-label="To date"
-          className="rounded-lg border border-slate-200 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-        />
-        <button
-          type="submit"
-          className="rounded-lg border border-slate-200 px-3 py-1.5 text-sm dark:border-slate-700"
-        >
-          Apply
-        </button>
+        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} aria-label="From date" className={inputCls} />
+        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} aria-label="To date" className={inputCls} />
+        <Button type="submit">Apply</Button>
         {(filterType || filterGoal || from || to) && (
           <button
             type="button"
@@ -275,7 +238,7 @@ export default function Activity() {
               setFrom("");
               setTo("");
             }}
-            className="text-sm underline"
+            className="text-sm text-slate-500 underline"
           >
             Clear
           </button>
@@ -283,42 +246,48 @@ export default function Activity() {
       </form>
 
       {items.length === 0 ? (
-        <p className="text-sm text-slate-500">No activity matches. Log your first entry above.</p>
+        <EmptyState title="No activity matches" hint="Log your first entry above — completions of tasks, milestones, and goals appear here automatically." />
       ) : (
-        <ol className="flex flex-col gap-1">
-          {items.map((a) => (
-            <li
-              key={a.id}
-              className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-800"
-            >
-              <span
-                className={`rounded px-1.5 text-xs ${
-                  a.source === "auto" ? "bg-blue-100 text-blue-800" : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {a.source}
-              </span>
-              <span className="font-medium">{a.title}</span>
-              <span className="text-xs text-slate-500">
-                {ACTIVITY_TYPE_LABELS[a.activity_type] ?? a.activity_type}
-              </span>
-              {a.goal_title && <span className="text-xs text-slate-500">· {a.goal_title}</span>}
-              {a.value > 0 && <span className="text-xs text-slate-500">· +{fmtNum(a.value)}</span>}
-              <span className="ml-auto text-xs text-slate-500">{formatDate(a.occurred_at)}</span>
-              <button
-                onClick={() =>
-                  deleteActivity(a.id)
-                    .then(() => reload())
-                    .catch((err) => setError(errMsg(err)))
-                }
-                className="text-xs text-red-600 underline"
-                aria-label={`Delete activity ${a.title}`}
-              >
-                Delete
-              </button>
-            </li>
+        <div className="flex flex-col gap-5">
+          {grouped.map(([day, acts]) => (
+            <section key={day} aria-label={dayLabel(acts[0].occurred_at)}>
+              <p className="mb-1.5 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden />
+                {dayLabel(acts[0].occurred_at)}
+                <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" aria-hidden />
+              </p>
+              <ol className="relative flex flex-col gap-1.5 border-l-2 border-slate-200 pl-4 dark:border-slate-800">
+                {acts.map((a) => {
+                  const Icon = TYPE_ICONS[a.activity_type] ?? StickyNote;
+                  return (
+                    <li key={a.id} className={`${cardCls} flex items-start gap-2.5 p-3`}>
+                      <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${a.source === "auto" ? "bg-indigo-100 text-indigo-600 dark:bg-indigo-950 dark:text-indigo-300" : "bg-slate-100 text-slate-500 dark:bg-slate-800"}`} aria-hidden>
+                        <Icon size={15} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold leading-snug">{a.title}</p>
+                        <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 text-xs text-slate-400">
+                          <span>{ACTIVITY_TYPE_LABELS[a.activity_type] ?? a.activity_type}</span>
+                          {a.goal_title && <span>· {a.goal_title}</span>}
+                          {a.value > 0 && <span className="fm-num">· +{fmtNum(a.value)}</span>}
+                          <span className="fm-num">· {formatDate(a.occurred_at)}</span>
+                        </p>
+                        {a.description && <p className="mt-1 text-[13px] text-slate-500">{a.description}</p>}
+                      </div>
+                      <button
+                        onClick={() => deleteActivity(a.id).then(() => reload()).catch((err) => setError(errMsg(err)))}
+                        className="shrink-0 rounded p-1 text-xs text-slate-300 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                        aria-label={`Delete activity ${a.title}`}
+                      >
+                        Delete
+                      </button>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
           ))}
-        </ol>
+        </div>
       )}
     </div>
   );
